@@ -105,39 +105,41 @@ _MODE_BLURB = {
 }
 
 
-def _has_plan_dir(parts: tuple[str, ...]) -> bool:
-    """True when *parts* contain the ``.hermes``/``plans`` component pair."""
-    return any(parts[i : i + 2] == PLAN_DIR_PARTS for i in range(len(parts) - 1))
+def _plans_root(parts: tuple[str, ...]) -> Path | None:
+    """The path prefix up to and including a ``.hermes``/``plans`` pair, or None if there is none."""
+    for i in range(len(parts) - 1):
+        if parts[i : i + 2] == PLAN_DIR_PARTS:
+            return Path(*parts[: i + 2])
+    return None
 
 
-def _is_plan_file(args: dict | None) -> bool:
-    """True when a write_file target is a markdown plan under a ``.hermes/plans/`` directory.
+def _is_plan_file(args: object) -> bool:
+    """True when a write_file target is a markdown plan that lands in a ``.hermes/plans/`` directory.
 
-    The path is normalised before the component check: tested raw, a string like
-    ``.hermes/plans/../../../evil.md`` names a plans directory and then leaves it, which
-    would hand plan mode an arbitrary ``*.md`` write anywhere on the machine. A path that
-    cannot be expanded or resolved (``~unknown-user/...`` raises) is not a plan file.
-
-    When normalisation loses the pair — ``resolve()`` follows symlinks, so a symlinked
-    ``.hermes`` or ``.hermes/plans`` hides it — the raw components are accepted instead,
-    but only when the path contains no ``..``: with nothing to climb, naming a plans
-    directory can only land inside the directory that name refers to.
+    The verdict is made on resolved paths, because a component test on the raw string
+    accepts ``.hermes/plans/../../../evil.md`` — which names a plans directory and then
+    leaves it. The rule is containment: the raw path must name a ``.hermes``/``plans``
+    directory, and the file it resolves to must sit inside the directory that name
+    resolves to. A symlinked ``.hermes`` or ``.hermes/plans`` therefore still works (the
+    name refers to whatever the user pointed it at), while a symlink *inside* plans, a
+    symlinked leaf, and anything that climbs out are all refused. A path that cannot be
+    expanded or resolved (``~unknown-user/...`` raises) is not a plan file either.
     """
-    path = (args or {}).get("path")
+    if not isinstance(args, dict):
+        return False
+    path = args.get("path")
     if not isinstance(path, str) or not path.strip():
         return False
     raw_path = path.strip()
     if Path(raw_path).suffix != PLAN_SUFFIX:
         return False
+    root = _plans_root(Path(raw_path).parts)
+    if root is None:
+        return False
     try:
-        candidate = Path(raw_path).expanduser()
-        resolved = candidate.resolve().parts
+        return Path(raw_path).expanduser().resolve().is_relative_to(root.expanduser().resolve())
     except (OSError, ValueError, RuntimeError):
         return False
-    if _has_plan_dir(resolved):
-        return True
-    raw = candidate.parts
-    return ".." not in raw and _has_plan_dir(raw)
 
 
 def guard(tool_name, args=None, task_id="", **kwargs):

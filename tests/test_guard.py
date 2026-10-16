@@ -105,11 +105,10 @@ class TestPlan(GuardTestCase):
             self.assertEqual(result["action"], "block", path)
 
     def test_plan_allows_a_plan_file_reached_through_a_symlinked_plans_directory(self):
-        """`resolve()` follows symlinks, so a symlinked `.hermes` hides the pair.
+        """A symlinked `.hermes` is the user naming the plans directory by another route.
 
-        The raw components still name a plans directory and climb nowhere (`..` is
-        absent), so the write is allowed, and it lands inside whatever the user's own
-        symlink points at — which is what that symlink means.
+        The file resolves *inside* the resolved plans directory, which is the whole
+        test: the name points at the directory, so the write lands in it.
         """
         state.set_mode("plan", source="test")
         with tempfile.TemporaryDirectory() as tmp:
@@ -124,6 +123,47 @@ class TestPlan(GuardTestCase):
                 self.assertIsNone(
                     self.block("write_file", {"path": ".hermes/plans/x.md", "content": "x"})
                 )
+            finally:
+                os.chdir(original)
+
+    def test_plan_blocks_a_plan_path_that_leaves_through_a_symlink_inside_plans(self):
+        """A link *inside* `.hermes/plans` points out of the tree, so the write is not a plan.
+
+        The raw components alone trust this link — only the resolved path shows that
+        the file lands outside the plans directory.
+        """
+        state.set_mode("plan", source="test")
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp) / "work"
+            outside = Path(tmp) / "outside"
+            (work / ".hermes" / "plans").mkdir(parents=True)
+            outside.mkdir()
+            (work / ".hermes" / "plans" / "escape").symlink_to(outside, target_is_directory=True)
+            original = Path.cwd()
+            try:
+                os.chdir(work)
+                for path in (".hermes/plans/escape/x.md", ".hermes/plans/escape/deep/x.md"):
+                    result = self.block("write_file", {"path": path, "content": "x"})
+                    self.assertIsNotNone(result, path)
+                    self.assertEqual(result["action"], "block", path)
+            finally:
+                os.chdir(original)
+
+    def test_plan_blocks_a_plan_path_whose_leaf_is_a_symlink(self):
+        """Writing through a symlinked leaf lands the content wherever the link points."""
+        state.set_mode("plan", source="test")
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp) / "work"
+            outside = Path(tmp) / "outside.md"
+            (work / ".hermes" / "plans").mkdir(parents=True)
+            outside.write_text("not a plan\n")
+            (work / ".hermes" / "plans" / "plan.md").symlink_to(outside)
+            original = Path.cwd()
+            try:
+                os.chdir(work)
+                result = self.block("write_file", {"path": ".hermes/plans/plan.md", "content": "x"})
+                self.assertIsNotNone(result)
+                self.assertEqual(result["action"], "block")
             finally:
                 os.chdir(original)
 
@@ -170,6 +210,19 @@ class TestPlan(GuardTestCase):
             result = self.block("write_file", args)
             self.assertIsNotNone(result, args)
             self.assertEqual(result["action"], "block", args)
+
+    def test_plan_blocks_a_write_whose_args_are_not_a_mapping(self):
+        """`args` is whatever the call carried; a non-dict must block, not raise.
+
+        A raising pre_tool_call fails closed, but with a policy-error message instead
+        of the plan block, and the guard's own message is part of what the user reads.
+        """
+        state.set_mode("plan", source="test")
+        for args in (["x"], "a string", 7, 3.5, b"bytes"):
+            result = plugin.guard("write_file", args, task_id="t")
+            self.assertIsNotNone(result, args)
+            self.assertEqual(result["action"], "block", args)
+            self.assertIn("PLAN mode", result["message"])
 
 
 class TestLiveSwitch(GuardTestCase):
