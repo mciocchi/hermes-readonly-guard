@@ -9,6 +9,10 @@ Routes:
   GET  /state        -> {"mode": str, "blocking": bool, "modes": [str], "state_file": str}
   POST /state {mode} -> sets the mode, returns the new state
   POST /toggle       -> advances to the next mode, returns the new state
+
+A rejected request answers 200 with ``{"error": ...}`` and writes nothing. A body
+that is not a JSON object never reaches the handler: the ``dict | None`` annotation
+is validated first, so FastAPI answers 422 with ``{"detail": ...}`` instead.
 """
 
 from __future__ import annotations
@@ -28,7 +32,11 @@ router = APIRouter()
 
 
 def _payload() -> dict:
-    """The mode payload every route returns, straight from the state module."""
+    """The mode payload every route returns, straight from the state module.
+
+    ``state.status()`` is the one place that shape is defined — the routes must not
+    re-spell it, or the two drift the first time a field is added.
+    """
     return status()
 
 
