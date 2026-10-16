@@ -33,6 +33,24 @@ from .state import (
     state_path,
 )
 
+try:  # Hermes' own /plan prompt. Absent only in an interpreter without the repo on sys.path.
+    from agent.plan_prompt import build_plan_prompt
+except Exception:  # pragma: no cover - the fallback path is exercised when PYTHONPATH is unset
+    build_plan_prompt = None
+
+#: Injected when ``agent.plan_prompt`` is unavailable. Deliberately short: the
+#: procedure lives in the ``plan`` skill, so duplicating its text here would drift.
+_PLAN_FALLBACK_CONTEXT = (
+    "PLAN MODE (readonly-guard): this session is in plan mode — plan, do not execute. "
+    "Load the procedure with skill_view(name='plan') and follow it."
+)
+
+#: Appended to Hermes' plan prompt so the skill is the authoring reference.
+_PLAN_SKILL_POINTER = (
+    "The full planning procedure is available as the `plan` skill: "
+    "run skill_view(name='plan') and follow it."
+)
+
 READ_ONLY_TOOLS = {
     # filesystem reads
     "read_file",
@@ -111,6 +129,29 @@ def guard(tool_name, args=None, task_id="", **kwargs):
     return {"action": "block", "message": _PLAN_MESSAGE if mode == MODE_PLAN else _READONLY_MESSAGE}
 
 
+def _plan_context(user_message=None) -> str:
+    """The plan-mode prompt for this turn, plus the pointer to the `plan` skill.
+
+    Reusing ``build_plan_prompt`` is deliberate: the plugin must not maintain a
+    second copy of Hermes' planning contract, and ``/plan`` must not drift from
+    what plan mode injects.
+    """
+    task = user_message if isinstance(user_message, str) else ""
+    if build_plan_prompt is None:
+        return _PLAN_FALLBACK_CONTEXT
+    try:
+        return build_plan_prompt(task) + "\n\n" + _PLAN_SKILL_POINTER
+    except Exception:
+        return _PLAN_FALLBACK_CONTEXT
+
+
+def plan_directive(user_message=None, **kwargs):
+    """pre_llm_call directive: in plan mode, hand this turn to the plan skill."""
+    if read_mode() != MODE_PLAN:
+        return None
+    return {"context": _plan_context(user_message)}
+
+
 def _handle_readonly(raw_args: str) -> str:
     """/readonly [status|readonly|plan|writable|on|off|toggle] — raw_args is everything after the name."""
     arg = (raw_args or "").strip().lower()
@@ -137,6 +178,7 @@ def _handle_readonly(raw_args: str) -> str:
 
 def register(ctx):
     ctx.register_hook("pre_tool_call", guard)
+    ctx.register_hook("pre_llm_call", plan_directive)
     ctx.register_command(
         "readonly",
         handler=_handle_readonly,
