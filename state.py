@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 import time
 from pathlib import Path
 
@@ -44,12 +45,18 @@ def state_path() -> Path:
 
 
 def _read_raw() -> dict:
+    """The state file as a mapping; anything else reads as empty.
+
+    Missing, unreadable, unparseable, and parseable-but-not-an-object all collapse
+    to ``{}``, so every one of them lands on :data:`DEFAULT_MODE` in ``read_mode``
+    rather than raising into the hook (which would block every tool call behind a
+    confusing error) or into the dashboard (which would 500).
+    """
     try:
-        return json.loads(state_path().read_text())
-    except FileNotFoundError:
-        return {}
+        raw = json.loads(state_path().read_text())
     except Exception:
-        return {"mode": MODE_READONLY, "error": "unreadable state file"}
+        return {}
+    return raw if isinstance(raw, dict) else {}
 
 
 def read_mode() -> str:
@@ -81,9 +88,22 @@ def set_mode(mode: str, source: str = "unknown") -> dict:
     }
     path = state_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(payload, indent=2) + "\n")
-    tmp.replace(path)  # atomic: a reader never sees a half-written file
+    # A uniquely-named temp file in the same directory, then os.replace, so a reader
+    # never sees a half-written file. The name must be unique: the mode is
+    # machine-wide, so the desktop chip and a /readonly in another session can write
+    # it at the same moment, and with a shared temp name the loser's replace raises
+    # FileNotFoundError.
+    handle, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(handle, "w") as tmp:
+            tmp.write(json.dumps(payload, indent=2) + "\n")
+        os.replace(tmp_name, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
     return payload
 
 
