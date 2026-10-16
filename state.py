@@ -117,10 +117,19 @@ def next_mode(mode: str | None = None) -> str:
 
 
 def status() -> dict:
+    """The payload every surface reads: the mode, and what it means.
+
+    ``enabled`` is 1.x's word for "writes are blocked" and is kept for the desktop
+    copy already loaded in the app, which computes its chip from that key alone —
+    without it the chip would report "writable" while the guard is blocking. Drop it
+    when that copy has been refreshed (Capabilities → Plugins → Rescan).
+    """
     mode = read_mode()
+    blocking = blocks_writes(mode)
     return {
         "mode": mode,
-        "blocking": blocks_writes(mode),
+        "blocking": blocking,
+        "enabled": blocking,  # 1.x wire compat — see the docstring
         "modes": list(MODES),
         "state_file": str(state_path()),
     }

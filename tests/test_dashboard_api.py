@@ -64,6 +64,17 @@ class TestGetState(DashboardApiTestCase):
             body = self.client.get(STATE_URL).json()
             self.assertIs(body["blocking"], expected, mode)
 
+    def test_the_payload_keeps_the_1x_enabled_key_for_a_stale_client(self):
+        """The desktop half already deployed in the app reads `enabled`, not `mode`.
+
+        Dropping the key would leave the live chip reporting "writable" while the guard
+        is actually blocking — a safety indicator that lies. It is removed only when the
+        copy in the app has been refreshed.
+        """
+        self.assertIs(self.client.get(STATE_URL).json()["enabled"], True)   # no file -> readonly
+        self.client.post(STATE_URL, json={"mode": "writable"})
+        self.assertIs(self.client.get(STATE_URL).json()["enabled"], False)
+
 
 class TestPostState(DashboardApiTestCase):
     def test_setting_a_mode_writes_it(self):

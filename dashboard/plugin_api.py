@@ -6,9 +6,13 @@ directory on sys.path — one source of truth for the mode, shared with the agen
 half and the ``/readonly`` slash command.
 
 Routes:
-  GET  /state        -> {"mode": str, "blocking": bool, "modes": [str], "state_file": str}
+  GET  /state        -> {"mode": str, "blocking": bool, "enabled": bool, "modes": [str],
+                         "state_file": str}
   POST /state {mode} -> sets the mode, returns the new state
   POST /toggle       -> advances to the next mode, returns the new state
+
+`enabled` is 1.x's key for "writes are blocked", kept because the Desktop copy already
+loaded in the app reads it (see `state.status`); it goes when that copy is refreshed.
 
 A rejected request answers 200 with ``{"error": ...}`` and writes nothing. A body
 that is not a JSON object never reaches the handler: the ``dict | None`` annotation
