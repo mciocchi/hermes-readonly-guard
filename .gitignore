@@ -1,0 +1,3 @@
+# Bytecode caches: rebuilt by the interpreter, never source.
+__pycache__/
+*.pyc

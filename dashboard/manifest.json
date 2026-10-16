@@ -1,0 +1,7 @@
+{
+  "name": "readonly-guard",
+  "label": "Read-only guard",
+  "description": "Code-enforced read-only posture with a clickable on/off switch.",
+  "version": "1.1",
+  "api": "plugin_api.py"
+}
