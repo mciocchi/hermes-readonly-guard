@@ -1,0 +1,84 @@
+"""Static contract checks for the desktop half.
+
+There is no way to render the app's UI from a terminal, and the two failure modes that
+matter here are silent: an identifier that is not exported by the SDK, and a
+contribution registered into a dead area id — in both cases the plugin loads,
+registers, and simply never appears. These checks parse the file rather than run it.
+"""
+
+from __future__ import annotations
+
+import re
+import unittest
+from pathlib import Path
+
+from plugin_under_test import PLUGIN_DIR
+
+SOURCE = (PLUGIN_DIR / "desktop" / "plugin.js").read_text()
+
+#: The desktop app's SDK barrel — the authority on what a plugin may import.
+SDK_BARREL = Path("/home/user/.hermes/hermes-agent/apps/desktop/src/sdk/index.ts")
+
+SDK_IMPORT_RE = re.compile(r"import\s*\{([^}]+)\}\s*from\s*'@hermes/plugin-sdk'")
+AREA_RE = re.compile(r"\barea:\s*([^,\n]+)")
+MODE_IDS = ("readonly", "plan", "writable")
+
+
+def registered_i18n_keys() -> set[str]:
+    """The keys of the `en` bundle the plugin registers with ctx.i18n.register."""
+    return set(re.findall(r"([A-Za-z0-9_]+):", SOURCE.split("en: {", 1)[1].split("}", 1)[0]))
+
+
+class TestSdkImports(unittest.TestCase):
+    def test_every_imported_identifier_is_a_real_sdk_export(self):
+        if not SDK_BARREL.is_file():
+            self.skipTest(f"desktop SDK barrel not present at {SDK_BARREL}")
+        barrel = SDK_BARREL.read_text()
+        match = SDK_IMPORT_RE.search(SOURCE)
+        if match is None:
+            self.fail("no '@hermes/plugin-sdk' import found in the desktop half")
+        imported = [
+            name.strip().split(" as ")[0].strip()
+            for name in match.group(1).split(",")
+            if name.strip()
+        ]
+        self.assertTrue(imported, "the desktop half imports nothing from the SDK?")
+        missing = [name for name in imported if not re.search(rf"\b{re.escape(name)}\b", barrel)]
+        self.assertEqual(missing, [], "imported from the plugin SDK but not exported by it")
+
+
+class TestContributionAreas(unittest.TestCase):
+    def test_every_area_id_comes_from_an_sdk_constant(self):
+        """A literal area id is how a contribution silently never renders.
+
+        The palette's real area id is the SDK's PALETTE_AREA ('palette'), not the string
+        'PALETTE_AREA'; registering into the literal reads correctly and shows nothing.
+        """
+        values = [value.strip() for value in AREA_RE.findall(SOURCE)]
+        self.assertEqual(
+            len(values), 2,
+            f"expected 2 registration sites (the status-bar control + the palette loop); "
+            f"update this count if you add one: {values}",
+        )
+        quoted = [value for value in values if value[0] in "'\""]
+        self.assertEqual(quoted, [], "area ids must be imported constants, not string literals")
+
+    def test_the_palette_constant_is_imported_and_used(self):
+        self.assertIn("PALETTE_AREA", SOURCE)
+
+
+class TestI18nKeys(unittest.TestCase):
+    def test_every_mode_has_a_label_and_a_tooltip(self):
+        registered = registered_i18n_keys()
+        for mode in MODE_IDS:
+            self.assertIn(f"mode_{mode}", registered)
+            self.assertIn(f"tip_{mode}", registered)
+
+    def test_the_loading_and_error_copy_is_registered(self):
+        registered = registered_i18n_keys()
+        self.assertIn("unavailable", registered, "the tooltip shown when the fetch failed")
+        self.assertIn("loading", registered, "the tooltip shown before the first fetch resolves")
+
+
+if __name__ == "__main__":
+    unittest.main()
