@@ -1,14 +1,17 @@
-"""readonly-guard — code-enforced read-only posture with a runtime switch.
+"""readonly-guard — code-enforced posture with a runtime mode switch.
+
+Three modes, defined in ``state.py``: ``readonly``, ``plan``, ``writable``.
 
 Two contributions:
 
-1. ``pre_tool_call`` hook: blocks every tool call that is not on the read-only
-   allowlist. A directive/control hook, so the ``block`` return short-circuits
-   the tool before the approval layer — ``--yolo`` and ``approvals.mode: off``
-   cannot lift it. A callback that raises or times out fails CLOSED.
-2. ``/readonly`` slash command: ``/readonly [status|on|off|toggle]`` flips the
-   switch in CLI, TUI, desktop, and gateway sessions. The desktop chip does the
-   same thing over ``dashboard/plugin_api.py``.
+1. ``pre_tool_call`` hook: blocks every tool call that is not on the inspection
+   allowlist whenever the mode restricts (``readonly`` or ``plan``). A
+   directive/control hook, so the ``block`` return short-circuits the tool
+   before the approval layer — ``--yolo`` and ``approvals.mode: off`` cannot
+   lift it. A callback that raises or times out fails CLOSED.
+2. ``/readonly`` slash command: ``/readonly [status|readonly|plan|writable|on|off|toggle]``
+   flips the switch in CLI, TUI, desktop, and gateway sessions. The desktop
+   chip does the same thing over ``dashboard/plugin_api.py``.
 
 The switch is deliberately NOT exposed as an agent tool: an agent that can turn
 off its own guard has no guard.
@@ -16,9 +19,13 @@ off its own guard has no guard.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from .state import (
+    MODE_PLAN,
     MODE_READONLY,
     MODE_WRITABLE,
+    MODES,
     blocks_writes,
     next_mode,
     read_mode,
@@ -48,46 +55,84 @@ READ_ONLY_TOOLS = {
     "read_window_below",
 }
 
-MESSAGE = (
+#: Path components a plan file must sit under. Components, not a substring test,
+#: so ``notes/.hermes/plans/x.md`` still counts as the plans directory.
+PLAN_DIR_PARTS = (".hermes", "plans")
+PLAN_SUFFIX = ".md"
+
+_READONLY_MESSAGE = (
     "BLOCKED: this Hermes instance is in read-only mode (readonly-guard). "
     "Only inspection tools are available: {allowed}. "
     "Nothing may be written, executed, sent, or scheduled. Do not retry or "
     "rephrase — report what you found in the conversation instead. "
-    "The user can re-enable writes with /readonly off."
+    "The user can leave read-only mode with /readonly writable."
 ).format(allowed=", ".join(sorted(READ_ONLY_TOOLS)))
+
+_PLAN_MESSAGE = (
+    "BLOCKED: this Hermes instance is in PLAN mode (readonly-guard). "
+    "Inspection tools are available ({allowed}), plus write_file for the plan "
+    "markdown under .hermes/plans/. Do not execute, edit, or send anything — "
+    "produce the plan instead. The user can leave plan mode with /readonly writable."
+).format(allowed=", ".join(sorted(READ_ONLY_TOOLS)))
+
+_USAGE = "usage: /readonly [status|readonly|plan|writable|on|off|toggle]"
+
+#: Shorthand for the modes people already typed in 1.x.
+_ALIASES = {"on": MODE_READONLY, "off": MODE_WRITABLE}
+
+_MODE_BLURB = {
+    MODE_READONLY: "ON (read-only) — every non-inspection tool call is blocked.",
+    MODE_PLAN: "PLAN — inspection tools and the plan markdown only; every turn is planned, not executed.",
+    MODE_WRITABLE: "OFF (writes allowed) — nothing is blocked.",
+}
+
+
+def _is_plan_file(args: dict | None) -> bool:
+    """True when a write_file target is a markdown plan under a ``.hermes/plans/`` directory."""
+    path = (args or {}).get("path")
+    if not isinstance(path, str) or not path.strip():
+        return False
+    candidate = Path(path.strip()).expanduser()
+    if candidate.suffix != PLAN_SUFFIX:
+        return False
+    parts = candidate.parts
+    return any(parts[i : i + 2] == PLAN_DIR_PARTS for i in range(len(parts) - 1))
 
 
 def guard(tool_name, args=None, task_id="", **kwargs):
-    """pre_tool_call directive: block anything that is not a read-only tool."""
-    if not blocks_writes():
+    """pre_tool_call directive: block anything the current mode does not allow."""
+    mode = read_mode()
+    if not blocks_writes(mode):
         return None
     if tool_name in READ_ONLY_TOOLS:
         return None
-    return {"action": "block", "message": MESSAGE}
+    if mode == MODE_PLAN and tool_name == "write_file" and _is_plan_file(args):
+        return None
+    return {"action": "block", "message": _PLAN_MESSAGE if mode == MODE_PLAN else _READONLY_MESSAGE}
 
 
 def _handle_readonly(raw_args: str) -> str:
-    """/readonly [status|on|off|toggle] — raw_args is everything after the name."""
+    """/readonly [status|readonly|plan|writable|on|off|toggle] — raw_args is everything after the name."""
     arg = (raw_args or "").strip().lower()
     if arg in ("", "status"):
         mode = read_mode()
         return (
-            f"readonly-guard: {mode} (blocking={'yes' if blocks_writes(mode) else 'no'})\n"
+            f"readonly-guard: {mode} — {_MODE_BLURB[mode]}\n"
+            f"modes: {', '.join(MODES)}\n"
             f"state file: {state_path()}\n"
-            "usage: /readonly [status|on|off|toggle]\n"
+            f"{_USAGE}\n"
             "The switch applies to the NEXT tool call — no restart."
         )
-    if arg == "on":
-        set_mode(MODE_READONLY, source="slash_command")
-        return "readonly-guard: ON — every non-read-only tool call is now blocked."
-    if arg == "off":
-        set_mode(MODE_WRITABLE, source="slash_command")
-        return "readonly-guard: OFF — writes and shell are allowed again."
     if arg == "toggle":
-        new = next_mode()
-        set_mode(new, source="slash_command")
-        return f"readonly-guard: {'ON (read-only)' if new == MODE_READONLY else 'OFF (writes allowed)'}."
-    return f"readonly-guard: unknown argument {arg!r} — usage: /readonly [status|on|off|toggle]"
+        mode = next_mode()
+    elif arg in _ALIASES:
+        mode = _ALIASES[arg]
+    elif arg in MODES:
+        mode = arg
+    else:
+        return f"readonly-guard: unknown argument {arg!r} — {_USAGE}"
+    set_mode(mode, source="slash_command")
+    return f"readonly-guard: {mode} — {_MODE_BLURB[mode]}"
 
 
 def register(ctx):
@@ -95,6 +140,6 @@ def register(ctx):
     ctx.register_command(
         "readonly",
         handler=_handle_readonly,
-        description="Show or flip the read-only guard (on/off/toggle)",
-        args_hint="[status|on|off|toggle]",
+        description="Show or set the readonly-guard mode (readonly/plan/writable)",
+        args_hint="[status|readonly|plan|writable|toggle]",
     )
