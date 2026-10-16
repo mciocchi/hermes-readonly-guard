@@ -50,6 +50,10 @@ aliases are 1.x's), with the desktop status-bar control, or over
   `write_file`: it exists so a plan can be delivered, not so files can be edited.
 - **`todo_list` is allowlisted on purpose.** It writes per-session task state, not files
   or remote state, and a plan is built with one.
+- **Contributions name their area with the SDK's constants, never a literal.** `'PALETTE_AREA'`
+  is not the palette — the constant's value is `'palette'` — and a literal registers
+  silently and never renders. `tests/test_desktop_contract.py` fails on any literal area
+  id; that check exists because 1.1 shipped three dead palette rows exactly this way.
 
 ## Project structure
 
