@@ -16,7 +16,15 @@ off its own guard has no guard.
 
 from __future__ import annotations
 
-from .state import read_only_enabled, set_read_only, state_path
+from .state import (
+    MODE_READONLY,
+    MODE_WRITABLE,
+    blocks_writes,
+    next_mode,
+    read_mode,
+    set_mode,
+    state_path,
+)
 
 READ_ONLY_TOOLS = {
     # filesystem reads
@@ -51,7 +59,7 @@ MESSAGE = (
 
 def guard(tool_name, args=None, task_id="", **kwargs):
     """pre_tool_call directive: block anything that is not a read-only tool."""
-    if not read_only_enabled():
+    if not blocks_writes():
         return None
     if tool_name in READ_ONLY_TOOLS:
         return None
@@ -62,23 +70,23 @@ def _handle_readonly(raw_args: str) -> str:
     """/readonly [status|on|off|toggle] — raw_args is everything after the name."""
     arg = (raw_args or "").strip().lower()
     if arg in ("", "status"):
-        state = "ON (read-only)" if read_only_enabled() else "OFF (writes allowed)"
+        mode = read_mode()
         return (
-            f"readonly-guard: {state}\n"
+            f"readonly-guard: {mode} (blocking={'yes' if blocks_writes(mode) else 'no'})\n"
             f"state file: {state_path()}\n"
             "usage: /readonly [status|on|off|toggle]\n"
             "The switch applies to the NEXT tool call — no restart."
         )
     if arg == "on":
-        set_read_only(True, source="slash_command")
+        set_mode(MODE_READONLY, source="slash_command")
         return "readonly-guard: ON — every non-read-only tool call is now blocked."
     if arg == "off":
-        set_read_only(False, source="slash_command")
+        set_mode(MODE_WRITABLE, source="slash_command")
         return "readonly-guard: OFF — writes and shell are allowed again."
     if arg == "toggle":
-        new = not read_only_enabled()
-        set_read_only(new, source="slash_command")
-        return f"readonly-guard: {'ON (read-only)' if new else 'OFF (writes allowed)'}."
+        new = next_mode()
+        set_mode(new, source="slash_command")
+        return f"readonly-guard: {'ON (read-only)' if new == MODE_READONLY else 'OFF (writes allowed)'}."
     return f"readonly-guard: unknown argument {arg!r} — usage: /readonly [status|on|off|toggle]"
 
 

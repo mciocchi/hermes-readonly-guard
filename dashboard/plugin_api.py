@@ -9,6 +9,10 @@ Routes:
   GET  /state          -> {"enabled": bool, "state_file": str}
   POST /toggle         -> flips the switch, returns the new state
   POST /state {enabled: bool} -> sets the switch explicitly
+
+The ``enabled`` shape is 1.x's: the mode API (and this file's mode-shaped
+rewrite) lands with the desktop half, so the running chip keeps working in
+between.
 """
 
 from __future__ import annotations
@@ -22,13 +26,13 @@ _PLUGIN_DIR = Path(__file__).resolve().parents[1]
 if str(_PLUGIN_DIR) not in sys.path:
     sys.path.insert(0, str(_PLUGIN_DIR))
 
-from state import read_only_enabled, set_read_only, state_path  # noqa: E402
+from state import MODE_READONLY, MODE_WRITABLE, blocks_writes, set_mode, state_path  # noqa: E402
 
 router = APIRouter()
 
 
 def _payload() -> dict:
-    return {"enabled": read_only_enabled(), "state_file": str(state_path())}
+    return {"enabled": blocks_writes(), "state_file": str(state_path())}
 
 
 @router.get("/state")
@@ -38,7 +42,7 @@ async def get_state():
 
 @router.post("/toggle")
 async def toggle():
-    set_read_only(not read_only_enabled(), source="dashboard")
+    set_mode(MODE_WRITABLE if blocks_writes() else MODE_READONLY, source="dashboard")
     return _payload()
 
 
@@ -47,5 +51,5 @@ async def post_state(body: dict | None = None):
     body = body or {}
     if "enabled" not in body:
         return {"error": "body must be {\"enabled\": true|false}"}
-    set_read_only(bool(body["enabled"]), source="dashboard")
+    set_mode(MODE_READONLY if body["enabled"] else MODE_WRITABLE, source="dashboard")
     return _payload()

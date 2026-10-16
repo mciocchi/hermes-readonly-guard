@@ -1,17 +1,21 @@
-"""Read-only posture: the single source of truth for the guard's on/off switch.
+"""Mode state: the single source of truth for the guard's posture.
 
-Every surface reads and writes ONE file under HERMES_HOME, so the switch works
-no matter which one flips it:
+Three mutually exclusive modes live in ONE file under HERMES_HOME, so the switch
+works no matter which surface flips it:
 
-- the agent half (``__init__.py``) reads it on every tool call
-- the ``/readonly`` slash command writes it
-- the dashboard backend (``dashboard/plugin_api.py``) reads/writes it for the
-  desktop chip
+- ``readonly``  — every non-inspection tool call is blocked.
+- ``plan``      — read-only, plus a per-turn directive to plan instead of
+                  execute. The only write allowed is a plan markdown file under
+                  ``.hermes/plans/``.
+- ``writable``  — nothing is blocked.
 
-Missing state file means read-only is OFF only if the user turned it off; a
-fresh install that never wrote the file defaults to ON (fail-safe: the plugin
-exists to restrict, so the surprising default must be the restrictive one).
-An unreadable or corrupt file is treated as ON.
+Fail-safe default: a missing, unreadable, or unrecognised state file reads as
+``readonly``. The plugin exists to restrict, so the surprising default must be
+the restrictive one.
+
+A 1.x file (before modes existed) stored only ``enabled``, where ``True`` meant
+"writes blocked". ``read_mode`` migrates it on read, and ``set_mode`` keeps
+writing that key so nothing else reading the file breaks.
 """
 
 from __future__ import annotations
@@ -20,6 +24,16 @@ import json
 import os
 import time
 from pathlib import Path
+
+MODE_READONLY = "readonly"
+MODE_PLAN = "plan"
+MODE_WRITABLE = "writable"
+
+#: Every valid mode, most restrictive first. The order is also the toggle cycle.
+MODES: tuple[str, ...] = (MODE_READONLY, MODE_PLAN, MODE_WRITABLE)
+
+#: What a missing or unreadable state file reads as.
+DEFAULT_MODE = MODE_READONLY
 
 STATE_FILENAME = "readonly-guard.state"
 
@@ -35,18 +49,33 @@ def _read_raw() -> dict:
     except FileNotFoundError:
         return {}
     except Exception:
-        return {"enabled": True, "error": "unreadable state file"}
+        return {"mode": MODE_READONLY, "error": "unreadable state file"}
 
 
-def read_only_enabled() -> bool:
-    """True = the guard blocks every non-read-only tool call."""
-    return bool(_read_raw().get("enabled", True))
+def read_mode() -> str:
+    """The current mode. Anything unrecognised reads as the restrictive default."""
+    raw = _read_raw()
+    value = str(raw.get("mode", "")).strip().lower()
+    if value in MODES:
+        return value
+    if "mode" not in raw and raw.get("enabled") is False:
+        return MODE_WRITABLE  # a 1.x file the user had switched off
+    return DEFAULT_MODE
 
 
-def set_read_only(enabled: bool, source: str = "unknown") -> dict:
-    """Write the switch. Returns the new state dict."""
+def blocks_writes(mode: str | None = None) -> bool:
+    """True while the guard is restricting tool calls (readonly or plan)."""
+    return (mode or read_mode()) != MODE_WRITABLE
+
+
+def set_mode(mode: str, source: str = "unknown") -> dict:
+    """Write the mode. Returns the new state dict. Raises ValueError on an unknown mode."""
+    if mode not in MODES:
+        raise ValueError(f"unknown mode {mode!r}; expected one of {', '.join(MODES)}")
     payload = {
-        "enabled": bool(enabled),
+        "mode": mode,
+        # Kept for readers of the 1.x key: True meant "writes blocked".
+        "enabled": mode != MODE_WRITABLE,
         "updated_at": time.time(),
         "updated_by": source,
     }
@@ -58,5 +87,20 @@ def set_read_only(enabled: bool, source: str = "unknown") -> dict:
     return payload
 
 
+def next_mode(mode: str | None = None) -> str:
+    """The mode a ``toggle`` advances to: readonly -> plan -> writable -> readonly."""
+    current = mode or read_mode()
+    try:
+        return MODES[(MODES.index(current) + 1) % len(MODES)]
+    except ValueError:
+        return DEFAULT_MODE
+
+
 def status() -> dict:
-    return {"enabled": read_only_enabled(), "state_file": str(state_path())}
+    mode = read_mode()
+    return {
+        "mode": mode,
+        "blocking": blocks_writes(mode),
+        "modes": list(MODES),
+        "state_file": str(state_path()),
+    }
