@@ -83,6 +83,23 @@ class TestPlan(GuardTestCase):
         ):
             self.assertIsNone(self.block("write_file", {"path": path, "content": "x"}), path)
 
+    def test_plan_blocks_a_plan_path_that_escapes_the_plans_directory(self):
+        """Naming `.hermes/plans` and then leaving it is not a plan file.
+
+        A component test on the raw string accepts these, which would hand plan mode
+        an arbitrary `*.md` write anywhere on the machine.
+        """
+        state.set_mode("plan", source="test")
+        for path in (
+            ".hermes/plans/../../../evil.md",
+            ".hermes/plans/../../../../../../../tmp/owned.md",
+            ".hermes/plans/../../.bashrc.md",
+            ".hermes/plans/../not-plans/x.md",
+        ):
+            result = self.block("write_file", {"path": path, "content": "x"})
+            self.assertIsNotNone(result, path)
+            self.assertEqual(result["action"], "block", path)
+
     def test_plan_blocks_writes_that_are_not_plan_markdown(self):
         state.set_mode("plan", source="test")
         for path in ("src/app.py", ".hermes/plans/thing.txt", ".hermes/plan/thing.md",

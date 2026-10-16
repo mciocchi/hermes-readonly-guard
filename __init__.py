@@ -106,14 +106,24 @@ _MODE_BLURB = {
 
 
 def _is_plan_file(args: dict | None) -> bool:
-    """True when a write_file target is a markdown plan under a ``.hermes/plans/`` directory."""
+    """True when a write_file target is a markdown plan under a ``.hermes/plans/`` directory.
+
+    The path is normalised before the component check: tested raw, a string like
+    ``.hermes/plans/../../../evil.md`` names a plans directory and then leaves it,
+    which would hand plan mode an arbitrary ``*.md`` write anywhere on the machine.
+    ``resolve()`` is lexical for a path that does not exist yet, and a path that
+    cannot be resolved is not a plan file.
+    """
     path = (args or {}).get("path")
     if not isinstance(path, str) or not path.strip():
         return False
     candidate = Path(path.strip()).expanduser()
     if candidate.suffix != PLAN_SUFFIX:
         return False
-    parts = candidate.parts
+    try:
+        parts = candidate.resolve().parts
+    except (OSError, ValueError):
+        return False
     return any(parts[i : i + 2] == PLAN_DIR_PARTS for i in range(len(parts) - 1))
 
 
@@ -183,5 +193,5 @@ def register(ctx):
         "readonly",
         handler=_handle_readonly,
         description="Show or set the readonly-guard mode (readonly/plan/writable)",
-        args_hint="[status|readonly|plan|writable|toggle]",
+        args_hint="[status|readonly|plan|writable|on|off|toggle]",
     )

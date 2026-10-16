@@ -59,6 +59,24 @@ class TestPlanMode(PlanDirectiveTestCase):
     def test_the_callback_accepts_forward_compatible_kwargs(self):
         self.assertTrue(accepts_var_kwargs(plugin.plan_directive))
 
+    def test_the_fallback_context_is_used_when_the_built_in_prompt_is_unavailable(self):
+        """The import depends on the interpreter, so the fallback path needs its own test.
+
+        On this machine the Hermes venv has an editable install of `agent`, so the
+        import always succeeds and the fallback would otherwise never run anywhere.
+        """
+        state.set_mode("plan", source="test")
+        with mock.patch.object(plugin, "build_plan_prompt", None):
+            context = self.context()
+        self.assertIn(SKILL_POINTER, context)
+        self.assertIn("PLAN MODE", context)
+
+    def test_a_failing_built_in_prompt_falls_back_instead_of_breaking_the_turn(self):
+        state.set_mode("plan", source="test")
+        with mock.patch.object(plugin, "build_plan_prompt", side_effect=RuntimeError("boom")):
+            context = self.context()
+        self.assertIn(SKILL_POINTER, context)
+
     def test_an_empty_user_message_is_fine(self):
         state.set_mode("plan", source="test")
         self.assertIn(SKILL_POINTER, self.context(user_message=""))
