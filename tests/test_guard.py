@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 from plugin_under_test import accepts_var_kwargs, load_plugin, load_state
@@ -14,6 +15,9 @@ state = load_state()
 
 #: Tools that must stay blocked in plan mode: they execute, mutate, or leave the machine.
 NEVER_IN_PLAN = ("terminal", "patch", "skill_manage", "delegate_task", "memory", "write_file")
+
+#: A path that names a plans directory, for probing tools other than write_file.
+PLAN_PATH_ARGS = {"path": ".hermes/plans/x.md", "command": "ls -la .hermes/plans", "content": "x"}
 
 
 class GuardTestCase(unittest.TestCase):
@@ -99,6 +103,58 @@ class TestPlan(GuardTestCase):
             result = self.block("write_file", {"path": path, "content": "x"})
             self.assertIsNotNone(result, path)
             self.assertEqual(result["action"], "block", path)
+
+    def test_plan_allows_a_plan_file_reached_through_a_symlinked_plans_directory(self):
+        """`resolve()` follows symlinks, so a symlinked `.hermes` hides the pair.
+
+        The raw components still name a plans directory and climb nowhere (`..` is
+        absent), so the write is allowed, and it lands inside whatever the user's own
+        symlink points at — which is what that symlink means.
+        """
+        state.set_mode("plan", source="test")
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "target"
+            work = Path(tmp) / "work"
+            (target / "plans").mkdir(parents=True)
+            work.mkdir()
+            (work / ".hermes").symlink_to(target, target_is_directory=True)
+            original = Path.cwd()
+            try:
+                os.chdir(work)
+                self.assertIsNone(
+                    self.block("write_file", {"path": ".hermes/plans/x.md", "content": "x"})
+                )
+            finally:
+                os.chdir(original)
+
+    def test_plan_blocks_the_carve_out_for_every_tool_except_write_file(self):
+        """The carve-out is scoped to write_file.
+
+        Without that scope, `patch` — and worse, `terminal` — would be allowed
+        whenever the call happens to carry a plans path, which the block messages
+        themselves say is not allowed.
+        """
+        state.set_mode("plan", source="test")
+        for tool in ("patch", "terminal", "skill_manage", "delegate_task", "read_file"):
+            if tool in plugin.READ_ONLY_TOOLS:
+                continue  # allowed by the allowlist, not by the carve-out
+            result = self.block(tool, dict(PLAN_PATH_ARGS))
+            self.assertIsNotNone(result, tool)
+            self.assertEqual(result["action"], "block", tool)
+
+    def test_plan_blocks_a_path_that_cannot_be_expanded_instead_of_raising(self):
+        """`~<unknown-user>/...` makes `Path.expanduser()` raise.
+
+        A raising pre_tool_call still fails closed, but with a policy-error message
+        instead of the plan block — and the file it points at is not a plan file.
+        """
+        state.set_mode("plan", source="test")
+        result = self.block(
+            "write_file", {"path": "~nosuchuser-9f3a1c/.hermes/plans/x.md", "content": "x"}
+        )
+        self.assertIsNotNone(result)
+        self.assertEqual(result["action"], "block")
+        self.assertIn("PLAN mode", result["message"])
 
     def test_plan_blocks_writes_that_are_not_plan_markdown(self):
         state.set_mode("plan", source="test")

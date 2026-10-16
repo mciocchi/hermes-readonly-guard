@@ -2,20 +2,26 @@
 
 The hook names and the command's argument surface are load-bearing — a wrong hook
 name means the guard never fires, and the command is the only way a user flips a
-mode — so they get their own tests rather than riding on the guard's.
+mode — so they get their own tests rather than riding on the guard's. The manifest
+is checked here too: it is the runtime's declaration, and drift from `register()`
+is otherwise visible only when someone remembers to run `hermes plugins doctor`.
 """
 
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 import unittest
 from unittest import mock
 
-from plugin_under_test import accepts_var_kwargs, load_plugin, load_state
+from plugin_under_test import PLUGIN_DIR, accepts_var_kwargs, load_plugin, load_state
 
 plugin = load_plugin()
 state = load_state()
+
+#: Every argument the command accepts, for the bidirectional hint check.
+COMMAND_ARGUMENTS = {"status", "readonly", "plan", "writable", "on", "off", "toggle"}
 
 
 class FakeContext:
@@ -59,11 +65,33 @@ class TestRegisteredHooks(RegistrationTestCase):
             self.assertTrue(accepts_var_kwargs(callback), name)
 
 
+class TestManifestMatchesRegistration(RegistrationTestCase):
+    """plugin.yaml is what the runtime reads; register() is what it gets."""
+
+    @staticmethod
+    def declared(section: str) -> set[str]:
+        """One list section of plugin.yaml, read without a YAML dependency."""
+        lines = (PLUGIN_DIR / "plugin.yaml").read_text().splitlines()
+        start = next(i for i, line in enumerate(lines) if line.startswith(f"{section}:"))
+        names = set()
+        for line in lines[start + 1:]:
+            if not line.startswith("  - "):
+                break
+            names.add(line[len("  - "):].strip())
+        return names
+
+    def test_provides_hooks_declares_exactly_the_hooks_that_are_registered(self):
+        self.assertEqual(self.declared("provides_hooks"), set(self.ctx.hooks))
+
+    def test_provides_tools_declares_nothing_because_no_tool_is_registered(self):
+        self.assertEqual(self.declared("provides_tools"), set())
+
+
 class TestCommandSurface(RegistrationTestCase):
-    def test_the_command_advertises_every_argument_it_accepts(self):
-        advertised = self.ctx.commands["readonly"]["args_hint"]
-        for arg in ("status", "readonly", "plan", "writable", "on", "off", "toggle"):
-            self.assertIn(arg, advertised, arg)
+    def test_the_command_advertises_exactly_the_arguments_it_accepts(self):
+        """Bidirectional: a hint that drops a token, or invents one, fails here."""
+        advertised = set(re.findall(r"[a-z]+", self.ctx.commands["readonly"]["args_hint"]))
+        self.assertEqual(advertised, COMMAND_ARGUMENTS)
 
     def test_the_command_is_still_called_readonly(self):
         self.assertEqual(set(self.ctx.commands), {"readonly"})
@@ -91,8 +119,7 @@ class TestCommandBehaviour(RegistrationTestCase):
         for _ in range(4):
             out = self.run_command("toggle")
             seen.append(state.read_mode())
-            # The 1.x message claimed "OFF (writes allowed)" whenever the result was
-            # not readonly, which was false for plan mode. The message must name the mode.
+            # The reply must name the mode it landed on, not a two-state shorthand.
             self.assertIn(state.read_mode(), out)
         self.assertEqual(seen, ["plan", "writable", "readonly", "plan"])
 

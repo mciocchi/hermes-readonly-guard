@@ -105,26 +105,39 @@ _MODE_BLURB = {
 }
 
 
+def _has_plan_dir(parts: tuple[str, ...]) -> bool:
+    """True when *parts* contain the ``.hermes``/``plans`` component pair."""
+    return any(parts[i : i + 2] == PLAN_DIR_PARTS for i in range(len(parts) - 1))
+
+
 def _is_plan_file(args: dict | None) -> bool:
     """True when a write_file target is a markdown plan under a ``.hermes/plans/`` directory.
 
     The path is normalised before the component check: tested raw, a string like
-    ``.hermes/plans/../../../evil.md`` names a plans directory and then leaves it,
-    which would hand plan mode an arbitrary ``*.md`` write anywhere on the machine.
-    ``resolve()`` is lexical for a path that does not exist yet, and a path that
-    cannot be resolved is not a plan file.
+    ``.hermes/plans/../../../evil.md`` names a plans directory and then leaves it, which
+    would hand plan mode an arbitrary ``*.md`` write anywhere on the machine. A path that
+    cannot be expanded or resolved (``~unknown-user/...`` raises) is not a plan file.
+
+    When normalisation loses the pair — ``resolve()`` follows symlinks, so a symlinked
+    ``.hermes`` or ``.hermes/plans`` hides it — the raw components are accepted instead,
+    but only when the path contains no ``..``: with nothing to climb, naming a plans
+    directory can only land inside the directory that name refers to.
     """
     path = (args or {}).get("path")
     if not isinstance(path, str) or not path.strip():
         return False
-    candidate = Path(path.strip()).expanduser()
-    if candidate.suffix != PLAN_SUFFIX:
+    raw_path = path.strip()
+    if Path(raw_path).suffix != PLAN_SUFFIX:
         return False
     try:
-        parts = candidate.resolve().parts
-    except (OSError, ValueError):
+        candidate = Path(raw_path).expanduser()
+        resolved = candidate.resolve().parts
+    except (OSError, ValueError, RuntimeError):
         return False
-    return any(parts[i : i + 2] == PLAN_DIR_PARTS for i in range(len(parts) - 1))
+    if _has_plan_dir(resolved):
+        return True
+    raw = candidate.parts
+    return ".." not in raw and _has_plan_dir(raw)
 
 
 def guard(tool_name, args=None, task_id="", **kwargs):
