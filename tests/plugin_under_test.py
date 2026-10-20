@@ -32,10 +32,20 @@ def load_plugin():
     return module
 
 
+def load_submodule(name: str):
+    """One of the plugin's submodules, loaded through the same package spec.
+
+    Deliberately not ``load_plugin().<name>``: the package only binds a submodule that
+    ``__init__.py`` imports itself, so a test for a module the package does not use yet
+    would fail with AttributeError instead of testing anything.
+    """
+    load_plugin()
+    return importlib.import_module(f"{_MODULE_NAME}.{name}")
+
+
 def load_state():
     """The plugin's ``state`` submodule (same module object the package holds)."""
-    load_plugin()
-    return importlib.import_module(f"{_MODULE_NAME}.state")
+    return load_submodule("state")
 
 
 def accepts_var_kwargs(callback) -> bool:
