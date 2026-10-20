@@ -73,7 +73,9 @@ class TestPlan(GuardTestCase):
 
     def test_plan_block_message_names_the_mode_and_the_way_out(self):
         state.set_mode("plan", source="test")
-        message = self.block("terminal", {"command": "ls"})["message"]
+        # A refused command, not an allowed probe: `ls` runs in plan mode now, so it
+        # would come back as None and there would be no message to inspect.
+        message = self.block("terminal", {"command": "rm -rf /tmp/x"})["message"]
         self.assertIn("PLAN mode", message)
         self.assertIn("/readonly writable", message)
 
@@ -235,6 +237,43 @@ class TestLiveSwitch(GuardTestCase):
 
     def test_the_guard_callback_accepts_forward_compatible_kwargs(self):
         self.assertTrue(accepts_var_kwargs(plugin.guard))
+
+
+class TestPlanProbes(GuardTestCase):
+    """Plan mode may read the repo through `terminal`; readonly mode still may not."""
+
+    def test_plan_allows_a_probe_command(self):
+        state.set_mode("plan", source="test")
+        for command in ("git log --oneline -5", "ls", "rg 'def guard' .", "find . -name '*.py'"):
+            self.assertIsNone(self.block("terminal", {"command": command}), command)
+
+    def test_readonly_blocks_the_same_probe(self):
+        state.set_mode("readonly", source="test")
+        result = self.block("terminal", {"command": "git log --oneline -5"})
+        self.assertIsNotNone(result)
+        self.assertEqual(result["action"], "block")
+        self.assertIn("read-only mode", result["message"])
+
+    def test_plan_blocks_a_probe_that_is_not_read_only(self):
+        state.set_mode("plan", source="test")
+        for command in ("rm -rf /tmp/x", "git commit -m x", "git log; rm -rf /",
+                        "git log > out.txt", "find . -delete"):
+            result = self.block("terminal", {"command": command})
+            self.assertIsNotNone(result, command)
+            self.assertEqual(result["action"], "block", command)
+
+    def test_plan_blocks_a_background_probe(self):
+        state.set_mode("plan", source="test")
+        result = self.block("terminal", {"command": "git log", "background": True})
+        self.assertEqual(result["action"], "block")
+        self.assertIn("background", result["message"])
+
+    def test_the_plan_block_message_names_the_refusal(self):
+        state.set_mode("plan", source="test")
+        message = self.block("terminal", {"command": "rm -rf /tmp/x"})["message"]
+        self.assertIn("PLAN mode", message)
+        self.assertIn("Refused:", message)
+        self.assertIn("terminal", message)
 
 
 if __name__ == "__main__":

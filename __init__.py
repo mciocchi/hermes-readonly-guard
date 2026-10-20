@@ -5,8 +5,9 @@ Three modes, defined in ``state.py``: ``readonly``, ``plan``, ``writable``.
 Two contributions:
 
 1. ``pre_tool_call`` hook: blocks every tool call that is not on the inspection
-   allowlist whenever the mode restricts (``readonly`` or ``plan``). A
-   directive/control hook, so the ``block`` return short-circuits the tool
+   allowlist whenever the mode restricts (``readonly`` or ``plan``). Plan mode also
+   admits single read-only shell commands through ``terminal`` (``probe.py``).
+   A directive/control hook, so the ``block`` return short-circuits the tool
    before the approval layer — ``--yolo`` and ``approvals.mode: off`` cannot
    lift it. A callback that raises or times out fails CLOSED.
 2. ``/readonly`` slash command: ``/readonly [status|readonly|plan|writable|on|off|toggle]``
@@ -32,6 +33,8 @@ from .state import (
     set_mode,
     state_path,
 )
+
+from .probe import PROBE_PROGRAMS, probe_refusal
 
 try:  # Hermes' own /plan prompt. Absent only in an interpreter without the repo on sys.path.
     from agent.plan_prompt import build_plan_prompt
@@ -89,9 +92,13 @@ _READONLY_MESSAGE = (
 _PLAN_MESSAGE = (
     "BLOCKED: this Hermes instance is in PLAN mode (readonly-guard). "
     "Inspection tools are available ({allowed}), plus write_file for the plan "
-    "markdown under .hermes/plans/. Do not execute, edit, or send anything — "
-    "produce the plan instead. The user can leave plan mode with /readonly writable."
-).format(allowed=", ".join(sorted(READ_ONLY_TOOLS)))
+    "markdown under .hermes/plans/, plus probe commands through terminal "
+    "({probes}). Do not execute, edit, or send anything — produce the plan "
+    "instead. The user can leave plan mode with /readonly writable."
+).format(
+    allowed=", ".join(sorted(READ_ONLY_TOOLS)),
+    probes=", ".join(sorted(PROBE_PROGRAMS)),
+)
 
 _USAGE = "usage: /readonly [status|readonly|plan|writable|on|off|toggle]"
 
@@ -151,6 +158,11 @@ def guard(tool_name, args=None, task_id="", **kwargs):
         return None
     if mode == MODE_PLAN and tool_name == "write_file" and _is_plan_file(args):
         return None
+    if mode == MODE_PLAN and tool_name == "terminal":
+        refusal = probe_refusal(args)
+        if refusal is None:
+            return None
+        return {"action": "block", "message": f"{_PLAN_MESSAGE} Refused: {refusal}."}
     return {"action": "block", "message": _PLAN_MESSAGE if mode == MODE_PLAN else _READONLY_MESSAGE}
 
 

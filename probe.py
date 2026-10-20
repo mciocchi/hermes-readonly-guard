@@ -103,6 +103,12 @@ GIT_LISTINGS: dict[str, frozenset[str]] = {
     "submodule": frozenset({"status", "summary"}),
 }
 
+#: Global flags that take the NEXT token as their value. The loop has to consume that
+#: token, or `git -C /tmp log` reads `/tmp` as the sub-command and refuses the most
+#: common probe there is.
+GIT_GLOBAL_VALUE_FLAGS: frozenset[str] = frozenset({"-C", "--git-dir", "--work-tree",
+                                                   "--namespace", "--super-prefix"})
+
 #: Refused anywhere in a `git` command line: config injection (`-c alias.x='!cmd' x`),
 #: an alternate `--exec-path`, and pager execution.
 GIT_GLOBAL_DENIED: frozenset[str] = frozenset(
@@ -171,9 +177,10 @@ def _git_refusal(tokens: list[str]) -> str | None:
     """Refuse anything but a read-only `git` sub-command (and its read-only flags)."""
     index = 0
     while index < len(tokens) and tokens[index].startswith("-"):
-        if _flag(tokens[index]) in GIT_GLOBAL_DENIED:
-            return f"git {_flag(tokens[index])} is not allowed — it can run a command or inject config"
-        index += 1
+        flag = _flag(tokens[index])
+        if flag in GIT_GLOBAL_DENIED:
+            return f"git {flag} is not allowed — it can run a command or inject config"
+        index += 2 if flag in GIT_GLOBAL_VALUE_FLAGS else 1
     if index >= len(tokens):
         return "git needs a sub-command"
     sub, rest = tokens[index], tokens[index + 1:]

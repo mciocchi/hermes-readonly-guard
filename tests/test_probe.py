@@ -153,6 +153,17 @@ class TestGit(ProbeTestCase):
         for command in ("git log", "git diff", "git show", "git status", "git grep x"):
             self.assertAllowed(command)
 
+    def test_a_global_flag_with_a_value_does_not_hide_the_subcommand(self):
+        """`git -C <dir> log` is how a probe reaches a repo from another directory.
+
+        The path after `-C` is a value, not the sub-command: reading it as one refuses
+        the most common probe there is.
+        """
+        for command in ("git -C /tmp log", "git -C /tmp log --oneline -3",
+                        "git --git-dir /tmp/x log", "git --work-tree /tmp log"):
+            self.assertAllowed(command)
+        self.assertRefused("git -C", "sub-command")
+
     def test_mutating_subcommands_are_refused(self):
         for command in (
             "git add .",
