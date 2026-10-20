@@ -8,11 +8,11 @@ allowlist is blocked before it runs.
 
 One mode at a time, stored in `<HERMES_HOME>/readonly-guard.state`:
 
-| Mode | Inspection tools | `write_file` to `.hermes/plans/*.md` | Everything else | Extra behaviour |
-|---|---|---|---|---|
-| `readonly` | allowed | blocked | blocked | — |
-| `plan` | allowed | allowed | blocked | every turn is handed Hermes' plan prompt plus a pointer to the `plan` skill |
-| `writable` | allowed | allowed | allowed | — |
+| Mode | Inspection tools | `write_file` to `.hermes/plans/*.md` | Probe commands via `terminal` | Everything else | Extra behaviour |
+|---|---|---|---|---|---|
+| `readonly` | allowed | blocked | blocked | blocked | — |
+| `plan` | allowed | allowed | allowed (allowlist, see below) | blocked | every turn is handed Hermes' plan prompt plus a pointer to the `plan` skill |
+| `writable` | allowed | allowed | allowed | allowed | — |
 
 A missing, unreadable, unparseable, or non-object state file reads as `readonly`:
 the plugin exists to restrict, so the surprising default is the restrictive one.
@@ -46,6 +46,16 @@ aliases are 1.x's), with the desktop status-bar control, or over
   `.hermes/plans/../../../evil.md`, a symlink inside `plans`, and a symlinked leaf are
   all refused. A symlinked `.hermes` or `.hermes/plans` still works: the name refers to
   the directory the user pointed it at.
+- **Plan mode may run probe commands, and only single ones.** `probe.py` admits one
+  program per call, chosen from a fixed table, with no shell composition at all: `;`,
+  `&&`, `|`, `>`, `<`, `$(…)`, backticks and newlines are refused outright rather than
+  parsed. `git` is limited to read-only sub-commands (`status`, `log`, `diff`, `show`,
+  `grep`, `rev-parse`, …) with `-c`/`--exec-path`/`--paginate` and output/pager flags
+  refused; `find` is limited to an allowlist of primaries (`-exec`, `-delete` and
+  `-fprint` are not on it). **This is a speed bump, not a sandbox** — every verdict is a
+  string decision about a command a shell will then interpret, so anything unrecognised
+  is refused and a useful command sometimes is too. `readonly` mode keeps `terminal`
+  blocked entirely: it is the mode you leave on when nothing may run.
 - **`patch` is never permitted, even for a plan file.** The exception is scoped to
   `write_file`: it exists so a plan can be delivered, not so files can be edited.
 - **`todo_list` is allowlisted on purpose.** It writes per-session task state, not files

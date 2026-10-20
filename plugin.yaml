@@ -1,5 +1,5 @@
 name: readonly-guard
-version: "2.0"
+version: "2.1"
 description: Code-enforced posture with three runtime modes — readonly, plan, writable — switched by /readonly, the dashboard API, or the desktop chip.
 author: mciocchi
 provides_tools: []
