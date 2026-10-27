@@ -169,15 +169,14 @@ class TestPlan(GuardTestCase):
             finally:
                 os.chdir(original)
 
-    def test_plan_blocks_the_carve_out_for_every_tool_except_write_file(self):
-        """The carve-out is scoped to write_file.
+    def test_plan_blocks_the_carve_out_for_every_tool_except_the_plan_editors(self):
+        """The carve-out is scoped to the two tools that write a plan file.
 
-        Without that scope, `patch` — and worse, `terminal` — would be allowed
-        whenever the call happens to carry a plans path, which the block messages
-        themselves say is not allowed.
+        Without that scope, `terminal` — and anything else — would be allowed whenever
+        the call happens to carry a plans path, which the block messages say it is not.
         """
         state.set_mode("plan", source="test")
-        for tool in ("patch", "terminal", "skill_manage", "delegate_task", "read_file"):
+        for tool in ("terminal", "skill_manage", "delegate_task", "read_file"):
             if tool in plugin.READ_ONLY_TOOLS:
                 continue  # allowed by the allowlist, not by the carve-out
             result = self.block(tool, dict(PLAN_PATH_ARGS))
@@ -274,6 +273,55 @@ class TestPlanProbes(GuardTestCase):
         self.assertIn("PLAN mode", message)
         self.assertIn("Refused:", message)
         self.assertIn("terminal", message)
+
+
+class TestPlanEdits(GuardTestCase):
+    """Plan mode may write *and patch* a plan file: superseding a plan is an edit."""
+
+    PLAN = ".hermes/plans/2026-10-26_215732-existing.md"
+
+    def test_plan_allows_a_patch_to_a_plan_file(self):
+        state.set_mode("plan", source="test")
+        args = {"path": self.PLAN, "old_string": "## Old", "new_string": "## New"}
+        self.assertIsNone(self.block("patch", args))
+
+    def test_plan_blocks_a_patch_to_a_non_plan_file(self):
+        state.set_mode("plan", source="test")
+        result = self.block("patch", {"path": "src/app.py", "old_string": "a", "new_string": "b"})
+        self.assertIsNotNone(result)
+        self.assertEqual(result["action"], "block")
+
+    def test_readonly_blocks_a_patch_to_a_plan_file(self):
+        state.set_mode("readonly", source="test")
+        result = self.block("patch", {"path": self.PLAN, "old_string": "a", "new_string": "b"})
+        self.assertEqual(result["action"], "block")
+        self.assertIn("read-only mode", result["message"])
+
+    def test_plan_blocks_a_v4a_patch_even_when_it_names_a_plan_file(self):
+        """V4A carries several file headers, so a `path` naming a plan proves nothing.
+
+        The patch handler accepts this shape from any model, advertised or not.
+        """
+        state.set_mode("plan", source="test")
+        args = {
+            "mode": "patch",
+            "path": self.PLAN,
+            "patch": "*** Begin Patch\n*** Update File: src/app.py\n@@\n-x\n+y\n*** End Patch",
+        }
+        result = self.block("patch", args)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["action"], "block")
+
+    def test_plan_blocks_a_v4a_patch_without_a_path(self):
+        state.set_mode("plan", source="test")
+        args = {"mode": "patch", "patch": "*** Begin Patch\n*** Update File: x.md\n*** End Patch"}
+        self.assertEqual(self.block("patch", args)["action"], "block")
+
+    def test_plan_blocks_a_patch_that_escapes_the_plans_directory(self):
+        state.set_mode("plan", source="test")
+        for path in (".hermes/plans/../../../evil.md", ".hermes/plans/../../.bashrc.md"):
+            args = {"path": path, "old_string": "a", "new_string": "b"}
+            self.assertEqual(self.block("patch", args)["action"], "block", path)
 
 
 if __name__ == "__main__":

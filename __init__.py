@@ -91,8 +91,9 @@ _READONLY_MESSAGE = (
 
 _PLAN_MESSAGE = (
     "BLOCKED: this Hermes instance is in PLAN mode (readonly-guard). "
-    "Inspection tools are available ({allowed}), plus write_file for the plan "
-    "markdown under .hermes/plans/, plus probe commands through terminal "
+    "Inspection tools are available ({allowed}), plus write_file and a single-file "
+    "patch for the plan markdown under .hermes/plans/, plus probe commands through "
+    "terminal "
     "({probes}). Do not execute, edit, or send anything — produce the plan "
     "instead. The user can leave plan mode with /readonly writable."
 ).format(
@@ -149,6 +150,29 @@ def _is_plan_file(args: object) -> bool:
         return False
 
 
+#: Tools that may touch a plan markdown in plan mode. `patch` belongs here because
+#: superseding an existing plan is an edit, not a new file — and `write_file` over a
+#: file the task has not read is refused by the tool, which turns "supersede" into a
+#: read-then-rewrite.
+_PLAN_EDIT_TOOLS = frozenset({"write_file", "patch"})
+
+
+def _is_plan_edit(tool_name: str, args: object) -> bool:
+    """True when the call writes or patches one plan markdown, and nothing else.
+
+    `patch` has two shapes and only one is bounded: ``mode="replace"`` (the default)
+    edits the file named in ``path``, while ``mode="patch"`` is V4A and may carry
+    several file headers — including a decoy ``path`` naming a plan file. The handler
+    accepts V4A from any model, so the ``mode`` check is what keeps a plan-mode edit
+    from reaching ``src/app.py``.
+    """
+    if tool_name not in _PLAN_EDIT_TOOLS or not isinstance(args, dict):
+        return False
+    if tool_name == "patch" and args.get("mode", "replace") != "replace":
+        return False
+    return _is_plan_file(args)
+
+
 def guard(tool_name, args=None, task_id="", **kwargs):
     """pre_tool_call directive: block anything the current mode does not allow."""
     mode = read_mode()
@@ -156,7 +180,7 @@ def guard(tool_name, args=None, task_id="", **kwargs):
         return None
     if tool_name in READ_ONLY_TOOLS:
         return None
-    if mode == MODE_PLAN and tool_name == "write_file" and _is_plan_file(args):
+    if mode == MODE_PLAN and _is_plan_edit(tool_name, args):
         return None
     if mode == MODE_PLAN and tool_name == "terminal":
         refusal = probe_refusal(args)
