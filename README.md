@@ -8,10 +8,10 @@ allowlist is blocked before it runs.
 
 One mode at a time, stored in `<HERMES_HOME>/readonly-guard.state`:
 
-| Mode | Inspection tools | `write_file` to `.hermes/plans/*.md` | Probe commands via `terminal` | Everything else | Extra behaviour |
+| Mode | Inspection tools | `write_file` / `patch` to `.hermes/plans/*.md` | Probe commands via `terminal` | Everything else | Extra behaviour |
 |---|---|---|---|---|---|
 | `readonly` | allowed | blocked | blocked | blocked | — |
-| `plan` | allowed | allowed | allowed (allowlist, see below) | blocked | every turn is handed Hermes' plan prompt plus a pointer to the `plan` skill |
+| `plan` | allowed | allowed (single-file replace mode) | allowed (allowlist, see below) | blocked | every turn is handed Hermes' plan prompt plus a pointer to the `plan` skill |
 | `writable` | allowed | allowed | allowed | allowed | — |
 
 A missing, unreadable, unparseable, or non-object state file reads as `readonly`:
@@ -41,11 +41,15 @@ aliases are 1.x's), with the desktop status-bar control, or over
   the `plan` skill for the authoring procedure. If that import is unavailable the plugin
   injects a short pointer to the skill instead of a copy of the prompt, so the two can
   never drift.
-- **The plan-file exception is narrow.** Plan mode permits `write_file` only for a `.md`
-  path that names a `.hermes/plans` directory *and* resolves inside it, so
-  `.hermes/plans/../../../evil.md`, a symlink inside `plans`, and a symlinked leaf are
-  all refused. A symlinked `.hermes` or `.hermes/plans` still works: the name refers to
-  the directory the user pointed it at.
+- **The plan-file exception is narrow.** Plan mode permits `write_file`, and `patch` in
+  its single-file `replace` mode, only for a `.md` path that names a `.hermes/plans`
+  directory *and* resolves inside it, so `.hermes/plans/../../../evil.md`, a symlink
+  inside `plans`, and a symlinked leaf are all refused. A symlinked `.hermes` or
+  `.hermes/plans` still works: the name refers to the directory the user pointed it at.
+  Patching is what lets a session supersede an existing plan instead of rewriting it.
+- **V4A patches are refused in plan mode, even for a plan file.** `patch`'s `mode="patch"`
+  shape can carry several file headers (and a decoy `path`), so the carve-out keys on
+  `mode="replace"` only; a model that emits V4A has to use replace mode or `write_file`.
 - **Plan mode may run probe commands, and only single ones.** `probe.py` admits one
   program per call, chosen from a fixed table, with no shell composition at all: `;`,
   `&&`, `|`, `>`, `<`, `$(…)`, backticks and newlines are refused outright rather than
