@@ -13,6 +13,20 @@ from plugin_under_test import accepts_var_kwargs, load_plugin, load_state
 plugin = load_plugin()
 state = load_state()
 
+#: The per-session model: every test in this module drives ONE session, and the process
+#: binding is what `resolve_mode` falls back to for a call that carries no session_id
+#: (a slash command, or a subagent's call). `set_mode` is the old global switch's
+#: spelling, now scoped to that session.
+TEST_SESSION = "s-under-test"
+# Hard set, not setdefault: the harness that runs the suite exports its own
+# HERMES_SESSION_ID, and inheriting it would test the wrong session.
+os.environ["HERMES_SESSION_ID"] = TEST_SESSION
+
+
+def set_mode(mode, source="test"):
+    """Set the mode this module's session runs under."""
+    return state.set_session_mode(TEST_SESSION, mode, source=source)
+
 #: Tools that must stay blocked in plan mode: they execute, mutate, or leave the machine.
 NEVER_IN_PLAN = ("terminal", "patch", "skill_manage", "delegate_task", "memory", "write_file")
 
@@ -35,44 +49,44 @@ class GuardTestCase(unittest.TestCase):
 
 class TestWritable(GuardTestCase):
     def test_writable_blocks_nothing(self):
-        state.set_mode("writable", source="test")
+        set_mode("writable", source="test")
         for tool in sorted(plugin.READ_ONLY_TOOLS | set(NEVER_IN_PLAN) | {"computer_use"}):
             self.assertIsNone(self.block(tool), tool)
 
 
 class TestReadonly(GuardTestCase):
     def test_readonly_allows_every_allowlisted_tool(self):
-        state.set_mode("readonly", source="test")
+        set_mode("readonly", source="test")
         for tool in sorted(plugin.READ_ONLY_TOOLS):
             self.assertIsNone(self.block(tool), tool)
 
     def test_readonly_blocks_a_shell_command(self):
-        state.set_mode("readonly", source="test")
+        set_mode("readonly", source="test")
         result = self.block("terminal", {"command": "rm -rf /"})
         self.assertEqual(result["action"], "block")
         self.assertIn("read-only mode", result["message"])
 
     def test_readonly_blocks_the_plan_file_too(self):
-        state.set_mode("readonly", source="test")
+        set_mode("readonly", source="test")
         result = self.block("write_file", {"path": ".hermes/plans/x.md", "content": "x"})
         self.assertEqual(result["action"], "block")
 
 
 class TestPlan(GuardTestCase):
     def test_plan_allows_every_allowlisted_tool(self):
-        state.set_mode("plan", source="test")
+        set_mode("plan", source="test")
         for tool in sorted(plugin.READ_ONLY_TOOLS):
             self.assertIsNone(self.block(tool), tool)
 
     def test_plan_blocks_execution_and_edits(self):
-        state.set_mode("plan", source="test")
+        set_mode("plan", source="test")
         for tool in NEVER_IN_PLAN:
             result = self.block(tool, {"path": "src/app.py", "command": "ls", "content": "x"})
             self.assertIsNotNone(result, tool)
             self.assertEqual(result["action"], "block", tool)
 
     def test_plan_block_message_names_the_mode_and_the_way_out(self):
-        state.set_mode("plan", source="test")
+        set_mode("plan", source="test")
         # A refused command, not an allowed probe: `ls` runs in plan mode now, so it
         # would come back as None and there would be no message to inspect.
         message = self.block("terminal", {"command": "rm -rf /tmp/x"})["message"]
@@ -80,7 +94,7 @@ class TestPlan(GuardTestCase):
         self.assertIn("/readonly writable", message)
 
     def test_plan_allows_the_plan_markdown_anywhere_under_a_plans_directory(self):
-        state.set_mode("plan", source="test")
+        set_mode("plan", source="test")
         for path in (
             ".hermes/plans/2026-10-16_113922-thing.md",
             "./.hermes/plans/thing.md",
@@ -95,7 +109,7 @@ class TestPlan(GuardTestCase):
         A component test on the raw string accepts these, which would hand plan mode
         an arbitrary `*.md` write anywhere on the machine.
         """
-        state.set_mode("plan", source="test")
+        set_mode("plan", source="test")
         for path in (
             ".hermes/plans/../../../evil.md",
             ".hermes/plans/../../../../../../../tmp/owned.md",
@@ -112,7 +126,7 @@ class TestPlan(GuardTestCase):
         The file resolves *inside* the resolved plans directory, which is the whole
         test: the name points at the directory, so the write lands in it.
         """
-        state.set_mode("plan", source="test")
+        set_mode("plan", source="test")
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "target"
             work = Path(tmp) / "work"
@@ -134,7 +148,7 @@ class TestPlan(GuardTestCase):
         The raw components alone trust this link — only the resolved path shows that
         the file lands outside the plans directory.
         """
-        state.set_mode("plan", source="test")
+        set_mode("plan", source="test")
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp) / "work"
             outside = Path(tmp) / "outside"
@@ -153,7 +167,7 @@ class TestPlan(GuardTestCase):
 
     def test_plan_blocks_a_plan_path_whose_leaf_is_a_symlink(self):
         """Writing through a symlinked leaf lands the content wherever the link points."""
-        state.set_mode("plan", source="test")
+        set_mode("plan", source="test")
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp) / "work"
             outside = Path(tmp) / "outside.md"
@@ -175,7 +189,7 @@ class TestPlan(GuardTestCase):
         Without that scope, `terminal` — and anything else — would be allowed whenever
         the call happens to carry a plans path, which the block messages say it is not.
         """
-        state.set_mode("plan", source="test")
+        set_mode("plan", source="test")
         for tool in ("terminal", "skill_manage", "delegate_task", "read_file"):
             if tool in plugin.READ_ONLY_TOOLS:
                 continue  # allowed by the allowlist, not by the carve-out
@@ -189,7 +203,7 @@ class TestPlan(GuardTestCase):
         A raising pre_tool_call still fails closed, but with a policy-error message
         instead of the plan block — and the file it points at is not a plan file.
         """
-        state.set_mode("plan", source="test")
+        set_mode("plan", source="test")
         result = self.block(
             "write_file", {"path": "~nosuchuser-9f3a1c/.hermes/plans/x.md", "content": "x"}
         )
@@ -198,7 +212,7 @@ class TestPlan(GuardTestCase):
         self.assertIn("PLAN mode", result["message"])
 
     def test_plan_blocks_writes_that_are_not_plan_markdown(self):
-        state.set_mode("plan", source="test")
+        set_mode("plan", source="test")
         for path in ("src/app.py", ".hermes/plans/thing.txt", ".hermes/plan/thing.md",
                      ".hermesnotes.md", ".hermes/plans", ""):
             result = self.block("write_file", {"path": path, "content": "x"})
@@ -206,7 +220,7 @@ class TestPlan(GuardTestCase):
             self.assertEqual(result["action"], "block", path)
 
     def test_plan_blocks_a_write_with_no_usable_path(self):
-        state.set_mode("plan", source="test")
+        set_mode("plan", source="test")
         for args in ({}, {"path": None}, {"path": 5}, {"path": ["a.md"]}):
             result = self.block("write_file", args)
             self.assertIsNotNone(result, args)
@@ -218,7 +232,7 @@ class TestPlan(GuardTestCase):
         A raising pre_tool_call fails closed, but with a policy-error message instead
         of the plan block, and the guard's own message is part of what the user reads.
         """
-        state.set_mode("plan", source="test")
+        set_mode("plan", source="test")
         for args in (["x"], "a string", 7, 3.5, b"bytes"):
             result = plugin.guard("write_file", args, task_id="t")
             self.assertIsNotNone(result, args)
@@ -229,9 +243,9 @@ class TestPlan(GuardTestCase):
 class TestLiveSwitch(GuardTestCase):
     def test_the_guard_re_reads_the_mode_on_every_call(self):
         """A mode flipped mid-turn (chip, or /readonly) applies to the NEXT tool call."""
-        state.set_mode("plan", source="test")
+        set_mode("plan", source="test")
         self.assertEqual(self.block("terminal")["action"], "block")
-        state.set_mode("writable", source="test")
+        set_mode("writable", source="test")
         self.assertIsNone(self.block("terminal"))
 
     def test_the_guard_callback_accepts_forward_compatible_kwargs(self):
@@ -242,19 +256,19 @@ class TestPlanProbes(GuardTestCase):
     """Plan mode may read the repo through `terminal`; readonly mode still may not."""
 
     def test_plan_allows_a_probe_command(self):
-        state.set_mode("plan", source="test")
+        set_mode("plan", source="test")
         for command in ("git log --oneline -5", "ls", "rg 'def guard' .", "find . -name '*.py'"):
             self.assertIsNone(self.block("terminal", {"command": command}), command)
 
     def test_readonly_blocks_the_same_probe(self):
-        state.set_mode("readonly", source="test")
+        set_mode("readonly", source="test")
         result = self.block("terminal", {"command": "git log --oneline -5"})
         self.assertIsNotNone(result)
         self.assertEqual(result["action"], "block")
         self.assertIn("read-only mode", result["message"])
 
     def test_plan_blocks_a_probe_that_is_not_read_only(self):
-        state.set_mode("plan", source="test")
+        set_mode("plan", source="test")
         for command in ("rm -rf /tmp/x", "git commit -m x", "git log; rm -rf /",
                         "git log > out.txt", "find . -delete"):
             result = self.block("terminal", {"command": command})
@@ -262,13 +276,13 @@ class TestPlanProbes(GuardTestCase):
             self.assertEqual(result["action"], "block", command)
 
     def test_plan_blocks_a_background_probe(self):
-        state.set_mode("plan", source="test")
+        set_mode("plan", source="test")
         result = self.block("terminal", {"command": "git log", "background": True})
         self.assertEqual(result["action"], "block")
         self.assertIn("background", result["message"])
 
     def test_the_plan_block_message_names_the_refusal(self):
-        state.set_mode("plan", source="test")
+        set_mode("plan", source="test")
         message = self.block("terminal", {"command": "rm -rf /tmp/x"})["message"]
         self.assertIn("PLAN mode", message)
         self.assertIn("Refused:", message)
@@ -281,18 +295,18 @@ class TestPlanEdits(GuardTestCase):
     PLAN = ".hermes/plans/2026-10-26_215732-existing.md"
 
     def test_plan_allows_a_patch_to_a_plan_file(self):
-        state.set_mode("plan", source="test")
+        set_mode("plan", source="test")
         args = {"path": self.PLAN, "old_string": "## Old", "new_string": "## New"}
         self.assertIsNone(self.block("patch", args))
 
     def test_plan_blocks_a_patch_to_a_non_plan_file(self):
-        state.set_mode("plan", source="test")
+        set_mode("plan", source="test")
         result = self.block("patch", {"path": "src/app.py", "old_string": "a", "new_string": "b"})
         self.assertIsNotNone(result)
         self.assertEqual(result["action"], "block")
 
     def test_readonly_blocks_a_patch_to_a_plan_file(self):
-        state.set_mode("readonly", source="test")
+        set_mode("readonly", source="test")
         result = self.block("patch", {"path": self.PLAN, "old_string": "a", "new_string": "b"})
         self.assertEqual(result["action"], "block")
         self.assertIn("read-only mode", result["message"])
@@ -302,7 +316,7 @@ class TestPlanEdits(GuardTestCase):
 
         The patch handler accepts this shape from any model, advertised or not.
         """
-        state.set_mode("plan", source="test")
+        set_mode("plan", source="test")
         args = {
             "mode": "patch",
             "path": self.PLAN,
@@ -313,15 +327,68 @@ class TestPlanEdits(GuardTestCase):
         self.assertEqual(result["action"], "block")
 
     def test_plan_blocks_a_v4a_patch_without_a_path(self):
-        state.set_mode("plan", source="test")
+        set_mode("plan", source="test")
         args = {"mode": "patch", "patch": "*** Begin Patch\n*** Update File: x.md\n*** End Patch"}
         self.assertEqual(self.block("patch", args)["action"], "block")
 
     def test_plan_blocks_a_patch_that_escapes_the_plans_directory(self):
-        state.set_mode("plan", source="test")
+        set_mode("plan", source="test")
         for path in (".hermes/plans/../../../evil.md", ".hermes/plans/../../.bashrc.md"):
             args = {"path": path, "old_string": "a", "new_string": "b"}
             self.assertEqual(self.block("patch", args)["action"], "block", path)
+
+
+class TestPerSessionModes(GuardTestCase):
+    """One session's mode must never decide another session's tool calls."""
+
+    def set_default(self, mode):
+        self.addCleanup(plugin.settings.set_reader, None)
+        plugin.settings.set_reader(lambda key, default: mode)
+
+    def block_for(self, session_id, tool="terminal", args=None):
+        return plugin.guard(tool, args or {"command": "ls"}, task_id="t", session_id=session_id)
+
+    def test_a_writable_session_does_not_unblock_a_readonly_session(self):
+        self.set_default("readonly")
+        state.set_session_mode("s-writable", "writable", source="test")
+        self.assertIsNone(self.block_for("s-writable"))
+        result = self.block_for("s-readonly")
+        self.assertIsNotNone(result)
+        self.assertEqual(result["action"], "block")
+        self.assertIn("read-only mode", result["message"])
+
+    def test_each_session_reads_its_own_mode(self):
+        self.set_default("readonly")
+        state.set_session_mode("s-plan", "plan", source="test")
+        state.set_session_mode("s-writable", "writable", source="test")
+        self.assertIsNone(self.block_for("s-plan", "terminal", {"command": "ls"}))
+        # plan admits a probe, not a write; writable admits both
+        self.assertIsNotNone(self.block_for("s-plan", "write_file", {"path": "src/app.py", "content": "x"}))
+        self.assertIsNone(self.block_for("s-writable", "write_file", {"path": "src/app.py", "content": "x"}))
+
+    def test_an_unknown_session_uses_the_configured_default(self):
+        self.set_default("writable")
+        self.assertIsNone(self.block_for("never-seen"))
+        self.set_default("readonly")
+        self.assertIsNotNone(self.block_for("never-seen"))
+
+    def test_a_subagent_inherits_the_spawning_session_mode(self):
+        """A subagent's tool call carries the CHILD's session id; the session vars still
+        name the parent, so the child runs under the parent's mode."""
+        self.set_default("readonly")
+        state.set_session_mode("parent", "writable", source="test")
+        with mock.patch.dict(os.environ, {"HERMES_SESSION_ID": "parent"}):
+            self.assertIsNone(self.block_for("subagent-1-abc"))
+
+    def test_a_subagent_with_no_known_parent_gets_the_default(self):
+        self.set_default("readonly")
+        with mock.patch.dict(os.environ, {"HERMES_SESSION_ID": "unknown-parent"}):
+            self.assertIsNotNone(self.block_for("subagent-2-def"))
+
+    def test_the_block_message_says_the_switch_is_this_session(self):
+        self.set_default("readonly")
+        message = plugin.guard("terminal", {"command": "ls"}, task_id="t", session_id="s")["message"]
+        self.assertIn("this session", message)
 
 
 if __name__ == "__main__":

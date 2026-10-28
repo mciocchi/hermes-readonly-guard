@@ -43,6 +43,11 @@ def load_submodule(name: str):
     return importlib.import_module(f"{_MODULE_NAME}.{name}")
 
 
+#: Any test that calls ``state.set_session_mode`` MUST point ``HERMES_HOME`` at a temp dir
+#: first. Pointing it at the real home writes the live state the RUNNING Hermes process
+#: reads, which can switch the guard under the agent executing the tests (it happened):
+#: the per-session file has no top-level ``mode``, so the old in-memory guard reads it as
+#: ``readonly`` and every non-inspection tool call is refused.
 def load_state():
     """The plugin's ``state`` submodule (same module object the package holds)."""
     return load_submodule("state")

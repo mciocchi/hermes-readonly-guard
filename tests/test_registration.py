@@ -20,6 +20,11 @@ from plugin_under_test import PLUGIN_DIR, accepts_var_kwargs, load_plugin, load_
 plugin = load_plugin()
 state = load_state()
 
+#: The session these command tests run as. Hard set: the harness that runs the suite
+#: exports its own HERMES_SESSION_ID, and inheriting it would test the wrong session.
+TEST_SESSION = "s-under-test"
+os.environ["HERMES_SESSION_ID"] = TEST_SESSION
+
 #: Every argument the command accepts, for the bidirectional hint check.
 COMMAND_ARGUMENTS = {"status", "readonly", "plan", "writable", "on", "off", "toggle"}
 
@@ -30,6 +35,10 @@ class FakeContext:
     def __init__(self):
         self.hooks = {}
         self.commands = {}
+        self.settings = {}   # stand-in for plugins.entries.<id>.settings
+
+    def get_config(self, key, default=None):
+        return self.settings.get(key, default)
 
     def register_hook(self, hook_name, callback):
         self.hooks[hook_name] = callback
@@ -106,28 +115,66 @@ class TestCommandBehaviour(RegistrationTestCase):
     def test_each_mode_argument_selects_that_mode(self):
         for arg in ("readonly", "plan", "writable"):
             self.run_command(arg)
-            self.assertEqual(state.read_mode(), arg, arg)
+            self.assertEqual(state.get_session_mode(TEST_SESSION), arg, arg)
 
     def test_on_and_off_stay_aliases_for_readonly_and_writable(self):
         self.run_command("on")
-        self.assertEqual(state.read_mode(), state.MODE_READONLY)
+        self.assertEqual(state.get_session_mode(TEST_SESSION), state.MODE_READONLY)
         self.run_command("off")
-        self.assertEqual(state.read_mode(), state.MODE_WRITABLE)
+        self.assertEqual(state.get_session_mode(TEST_SESSION), state.MODE_WRITABLE)
 
     def test_toggle_cycles_through_all_three_modes_and_names_the_one_it_landed_on(self):
         seen = []
         for _ in range(4):
             out = self.run_command("toggle")
-            seen.append(state.read_mode())
+            seen.append(state.get_session_mode(TEST_SESSION))
             # The reply must name the mode it landed on, not a two-state shorthand.
-            self.assertIn(state.read_mode(), out)
+            self.assertIn(state.get_session_mode(TEST_SESSION), out)
         self.assertEqual(seen, ["plan", "writable", "readonly", "plan"])
 
     def test_an_unknown_argument_is_reported_and_changes_nothing(self):
         self.run_command("plan")
         out = self.run_command("bogus")
         self.assertIn("bogus", out)
-        self.assertEqual(state.read_mode(), state.MODE_PLAN)
+        self.assertEqual(state.get_session_mode(TEST_SESSION), state.MODE_PLAN)
+
+
+class TestReadonlyCommandIsPerSession(unittest.TestCase):
+    """/readonly switches the session it is typed in, and nothing else."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        env = mock.patch.dict(
+            os.environ, {"HERMES_HOME": tmp.name, "HERMES_SESSION_ID": "s-cli"}
+        )
+        env.start()
+        self.addCleanup(env.stop)
+
+    def test_readonly_sets_the_current_session_only(self):
+        state.set_session_mode("s-other", "writable", source="test")
+        plugin._handle_readonly("readonly")
+        self.assertEqual(state.get_session_mode("s-cli"), "readonly")
+        self.assertEqual(state.get_session_mode("s-other"), "writable")
+
+    def test_readonly_status_names_the_session_the_default_and_the_source(self):
+        state.set_session_mode("s-cli", "plan", source="test")
+        text = plugin._handle_readonly("status")
+        self.assertIn("plan", text)
+        self.assertIn("s-cli", text)
+        self.assertIn("from session", text)
+        self.assertIn("default for new sessions", text)
+
+    def test_readonly_toggle_advances_this_sessions_mode(self):
+        state.set_session_mode("s-cli", "plan", source="test")
+        plugin._handle_readonly("toggle")
+        self.assertEqual(state.get_session_mode("s-cli"), "writable")
+
+    def test_readonly_without_a_session_context_writes_nothing(self):
+        os.environ.pop("HERMES_SESSION_ID", None)
+        text = plugin._handle_readonly("writable")
+        self.assertIn("no session context", text)
+        self.assertEqual(state._sessions(), {})
 
 
 if __name__ == "__main__":

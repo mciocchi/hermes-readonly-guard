@@ -1,138 +1,157 @@
-"""The dashboard half: the mode API the desktop chip drives.
+"""The HTTP half: one session per request, and the setting when there is no session.
 
-Needs fastapi + httpx, which live in the Hermes venv — run the suite with
-$HERMES_REPO/venv/bin/python.
+The dashboard is what the desktop chip calls, so these tests are the chip's contract:
+`?session=` names a session, a POST body may carry one, and a request with neither
+edits the default that NEW sessions start with.
 """
 
 from __future__ import annotations
 
 import importlib.util
-import json
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
+import yaml
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-PLUGIN_DIR = Path(__file__).resolve().parents[1]
+from plugin_under_test import PLUGIN_DIR, load_submodule
 
-STATE_URL = "/api/plugins/readonly-guard/state"
-TOGGLE_URL = "/api/plugins/readonly-guard/toggle"
+sys.path.insert(0, str(PLUGIN_DIR))  # the dashboard half imports `state` top-level
+state = load_submodule("state")
 
 
-def _load_router():
-    """Load dashboard/plugin_api.py the way the web server does: by file path."""
+def load_api():
+    """The dashboard module, loaded the way the gateway loads it (by path, standalone)."""
     spec = importlib.util.spec_from_file_location(
-        "readonly_guard_dashboard_api", PLUGIN_DIR / "dashboard" / "plugin_api.py"
+        "rg_dashboard_api_under_test", PLUGIN_DIR / "dashboard" / "plugin_api.py"
     )
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)  # puts the plugin dir on sys.path itself
-    return module.router
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
-app = FastAPI()
-app.include_router(_load_router(), prefix="/api/plugins/readonly-guard")
-
-
-class DashboardApiTestCase(unittest.TestCase):
+class ApiCase(unittest.TestCase):
     def setUp(self):
-        tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(tmp.cleanup)
-        self.state_file = Path(tmp.name) / "readonly-guard.state"
-        env = mock.patch.dict(os.environ, {"HERMES_HOME": tmp.name})
+        self._home = tempfile.TemporaryDirectory()
+        self.addCleanup(self._home.cleanup)
+        env = mock.patch.dict(os.environ, {"HERMES_HOME": self._home.name})
         env.start()
         self.addCleanup(env.stop)
+        self.api = load_api()
+        app = FastAPI()
+        app.include_router(self.api.router)
         self.client = TestClient(app)
+        # The default-for-new-sessions write goes through Hermes' config writer, which a
+        # bare test interpreter cannot import. Record the call instead: what this test
+        # owns is the seam — the id, the key, the value — not Hermes' own writer.
+        self.written = []
+        self.api._write_setting = self.written.append
 
-    def mode_on_disk(self) -> str:
-        return json.loads(self.state_file.read_text())["mode"]
-
-
-class TestGetState(DashboardApiTestCase):
-    def test_state_reports_the_mode_the_modes_and_the_file(self):
-        body = self.client.get(STATE_URL).json()
-        self.assertEqual(body["mode"], "readonly")   # no file yet -> restrictive default
-        self.assertEqual(body["modes"], ["readonly", "plan", "writable"])
-        self.assertTrue(body["state_file"].endswith("readonly-guard.state"))
-
-    def test_blocking_is_false_only_for_writable(self):
-        for mode, expected in (("readonly", True), ("plan", True), ("writable", False)):
-            self.client.post(STATE_URL, json={"mode": mode})
-            body = self.client.get(STATE_URL).json()
-            self.assertIs(body["blocking"], expected, mode)
-
-    def test_the_payload_keeps_the_1x_enabled_key_for_a_stale_client(self):
-        """The desktop half already deployed in the app reads `enabled`, not `mode`.
-
-        Dropping the key would leave the live chip reporting "writable" while the guard
-        is actually blocking — a safety indicator that lies. It is removed only when the
-        copy in the app has been refreshed.
-        """
-        self.assertIs(self.client.get(STATE_URL).json()["enabled"], True)   # no file -> readonly
-        self.client.post(STATE_URL, json={"mode": "writable"})
-        self.assertIs(self.client.get(STATE_URL).json()["enabled"], False)
+    def setting_on_disk(self) -> str | None:
+        path = Path(self._home.name) / "config.yaml"
+        if not path.is_file():
+            return None
+        data = yaml.safe_load(path.read_text()) or {}
+        entry = ((data.get("plugins") or {}).get("entries") or {}).get("readonly-guard") or {}
+        return (entry.get("settings") or {}).get("default_mode")
 
 
-class TestPostState(DashboardApiTestCase):
-    def test_setting_a_mode_writes_it(self):
-        body = self.client.post(STATE_URL, json={"mode": "plan"}).json()
-        self.assertEqual(body["mode"], "plan")
-        self.assertEqual(self.mode_on_disk(), "plan")
+class TestGet(ApiCase):
+    def test_get_returns_the_named_sessions_mode(self):
+        state.set_session_mode("s1", "plan", source="test")
+        payload = self.client.get("/state", params={"session": "s1"}).json()
+        self.assertEqual(payload["mode"], "plan")
+        self.assertEqual(payload["source"], "session")
+        self.assertEqual(payload["session"], "s1")
+        self.assertNotIn("enabled", payload, "the 1.x key is gone in 3.0")
 
-    def test_a_rejected_mode_leaves_the_file_byte_identical(self):
-        """Compare the whole file, not the key the request tried to write.
+    def test_get_without_a_session_reports_the_default(self):
+        payload = self.client.get("/state").json()
+        self.assertEqual(payload["session"], "")
+        self.assertEqual(payload["mode"], "readonly")
+        self.assertEqual(payload["source"], "default")
+        self.assertEqual(payload["default"], "readonly")
+        self.assertTrue(payload["blocking"])
 
-        Re-reading only `mode` lets a handler that writes before validating pass, even
-        though the test's name claims it proves nothing changed.
-        """
-        self.client.post(STATE_URL, json={"mode": "plan"})
-        before = self.state_file.read_bytes()
-        body = self.client.post(STATE_URL, json={"mode": "yolo"}).json()
-        self.assertIn("error", body)
-        self.assertEqual(self.state_file.read_bytes(), before)
+    def test_the_payload_reports_which_file_it_reads(self):
+        payload = self.client.get("/state").json()
+        self.assertEqual(payload["state_file"], str(state.state_path()))
+        self.assertEqual(payload["modes"], list(state.MODES))
 
-    def test_a_rejected_mode_on_a_fresh_home_creates_no_state_file(self):
-        self.assertFalse(self.state_file.exists())
-        body = self.client.post(STATE_URL, json={"mode": "yolo"}).json()
-        self.assertIn("error", body)
-        self.assertFalse(self.state_file.exists())
-
-    def test_a_missing_mode_is_an_error_and_changes_nothing(self):
-        self.client.post(STATE_URL, json={"mode": "plan"})
-        before = self.state_file.read_bytes()
-        for body in ({}, None):
-            self.assertIn("error", self.client.post(STATE_URL, json=body).json(), body)
-        self.assertEqual(self.state_file.read_bytes(), before)
-
-    def test_the_legacy_enabled_body_is_rejected(self):
-        """1.1's shape is gone; the UI and this API ship together."""
-        body = self.client.post(STATE_URL, json={"enabled": True}).json()
-        self.assertIn("error", body)
-
-    def test_a_non_object_body_is_rejected_before_the_handler_runs(self):
-        """FastAPI validates the `dict | None` annotation, so the handler never sees it.
-
-        That makes the documented `{"error": ...}` envelope non-universal: a malformed
-        body answers 422 with `{"detail": ...}` instead. Pinned here because the chip's
-        error path depends on which one it gets.
-        """
-        self.client.post(STATE_URL, json={"mode": "plan"})
-        before = self.state_file.read_bytes()
-        for payload in ([], "plan", 42, True):
-            response = self.client.post(STATE_URL, json=payload)
-            self.assertEqual(response.status_code, 422, payload)
-        self.assertEqual(self.state_file.read_bytes(), before)
+    def test_get_reports_blocking_for_a_writable_session(self):
+        state.set_session_mode("s1", "writable", source="test")
+        payload = self.client.get("/state", params={"session": "s1"}).json()
+        self.assertFalse(payload["blocking"])
 
 
-class TestToggle(DashboardApiTestCase):
-    def test_toggle_cycles_readonly_plan_writable_readonly(self):
-        seen = []
-        for _ in range(4):
-            seen.append(self.client.post(TOGGLE_URL).json()["mode"])
-        self.assertEqual(seen, ["plan", "writable", "readonly", "plan"])
+class TestPost(ApiCase):
+    def test_post_with_a_session_leaves_other_sessions_alone(self):
+        state.set_session_mode("s-other", "writable", source="test")
+        response = self.client.post("/state", json={"mode": "readonly", "session": "s1"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(state.get_session_mode("s1"), "readonly")
+        self.assertEqual(state.get_session_mode("s-other"), "writable")
+        self.assertIsNone(self.setting_on_disk(), "a session write must not touch the setting")
+
+    def test_post_without_a_session_writes_the_default_setting(self):
+        response = self.client.post("/state", json={"mode": "writable"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.written, [{"default_mode": "writable"}])
+        self.assertEqual(response.json()["default"], "writable")
+        self.assertEqual(state._sessions(), {}, "a default write must not invent a session")
+
+    def test_post_echoes_the_session_it_wrote(self):
+        body = {"mode": "plan", "session": "s9"}
+        payload = self.client.post("/state", json=body).json()
+        self.assertEqual(payload["session"], "s9")
+        self.assertEqual(payload["mode"], "plan")
+        self.assertEqual(payload["source"], "session")
+
+    def test_a_session_write_does_not_change_the_reported_default(self):
+        self.client.post("/state", json={"mode": "writable", "session": "s1"})
+        payload = self.client.get("/state", params={"session": "s1"}).json()
+        self.assertEqual(payload["default"], "readonly")
+
+    def test_a_bad_mode_is_rejected_and_nothing_is_written(self):
+        response = self.client.post("/state", json={"mode": "yolo", "session": "s1"})
+        self.assertIn("error", response.json())
+        self.assertIsNone(state.get_session_mode("s1"))
+        self.assertIsNone(self.setting_on_disk())
+
+    def test_a_non_object_body_is_422_and_writes_nothing(self):
+        response = self.client.post("/state", json=["writable"])
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(state._sessions(), {})
+        self.assertIsNone(self.setting_on_disk())
+
+    def test_a_legacy_enabled_body_is_rejected(self):
+        """1.x's `{enabled: true}` is not a mode — an unknown shape is a request the
+        caller does not understand, not one to guess at."""
+        response = self.client.post("/state", json={"enabled": True, "session": "s1"})
+        self.assertIn("error", response.json())
+        self.assertIsNone(state.get_session_mode("s1"))
+
+    def test_toggle_advances_a_sessions_mode(self):
+        state.set_session_mode("s1", "plan", source="test")
+        payload = self.client.post("/toggle", json={"session": "s1"}).json()
+        self.assertEqual(payload["mode"], "writable")
+        self.assertEqual(state.get_session_mode("s1"), "writable")
+
+    def test_toggle_without_a_session_advances_the_default(self):
+        payload = self.client.post("/toggle", json={}).json()
+        self.assertEqual(self.written, [{"default_mode": "plan"}])
+        self.assertEqual(payload["mode"], "plan")
+
+    def test_toggle_wraps_from_writable_back_to_readonly(self):
+        state.set_session_mode("s1", "writable", source="test")
+        payload = self.client.post("/toggle", json={"session": "s1"}).json()
+        self.assertEqual(payload["mode"], "readonly")
 
 
 if __name__ == "__main__":

@@ -20,6 +20,7 @@ off its own guard has no guard.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from .state import (
@@ -28,13 +29,14 @@ from .state import (
     MODE_WRITABLE,
     MODES,
     blocks_writes,
+    get_session_mode,
     next_mode,
-    read_mode,
-    set_mode,
+    set_session_mode,
     state_path,
 )
 
 from .probe import PROBE_PROGRAMS, probe_refusal
+from .settings import default_mode, set_reader
 
 try:  # Hermes' own /plan prompt. Absent only in an interpreter without the repo on sys.path.
     from agent.plan_prompt import build_plan_prompt
@@ -82,20 +84,21 @@ PLAN_DIR_PARTS = (".hermes", "plans")
 PLAN_SUFFIX = ".md"
 
 _READONLY_MESSAGE = (
-    "BLOCKED: this Hermes instance is in read-only mode (readonly-guard). "
+    "BLOCKED: this session is in read-only mode (readonly-guard). "
     "Only inspection tools are available: {allowed}. "
     "Nothing may be written, executed, sent, or scheduled. Do not retry or "
     "rephrase — report what you found in the conversation instead. "
-    "The user can leave read-only mode with /readonly writable."
+    "The user can leave read-only mode with /readonly writable — that affects only this session."
 ).format(allowed=", ".join(sorted(READ_ONLY_TOOLS)))
 
 _PLAN_MESSAGE = (
-    "BLOCKED: this Hermes instance is in PLAN mode (readonly-guard). "
+    "BLOCKED: this session is in PLAN mode (readonly-guard). "
     "Inspection tools are available ({allowed}), plus write_file and a single-file "
     "patch for the plan markdown under .hermes/plans/, plus probe commands through "
     "terminal "
     "({probes}). Do not execute, edit, or send anything — produce the plan "
-    "instead. The user can leave plan mode with /readonly writable."
+    "instead. The user can leave plan mode with /readonly writable — that affects only this "
+    "session; new sessions start as the configured default."
 ).format(
     allowed=", ".join(sorted(READ_ONLY_TOOLS)),
     probes=", ".join(sorted(PROBE_PROGRAMS)),
@@ -173,9 +176,49 @@ def _is_plan_edit(tool_name: str, args: object) -> bool:
     return _is_plan_file(args)
 
 
-def guard(tool_name, args=None, task_id="", **kwargs):
-    """pre_tool_call directive: block anything the current mode does not allow."""
-    mode = read_mode()
+def current_session_id() -> str:
+    """The session this process is bound to, or ``""`` when nothing is bound.
+
+    Reads the gateway's session vars, which are authoritative for a slash command (no
+    payload at all) and for a subagent (its own ``session_id`` arrives as a hook kwarg,
+    but the vars still name the session that spawned it). ``os.environ`` is the fallback
+    for a plain CLI process. Never guesses: an empty answer means "no session here".
+    """
+    try:
+        from gateway.session_context import get_session_env
+        value = get_session_env("HERMES_SESSION_ID", "")
+    except Exception:
+        value = ""
+    return str(value or os.environ.get("HERMES_SESSION_ID", "") or "")
+
+
+def resolve_mode(session_id: str = "") -> tuple[str, str]:
+    """``(mode, source)`` for one tool call.
+
+    Three steps, most specific first: this session's own entry, then the entry of the
+    session that spawned this one (a subagent inherits its parent's posture — otherwise
+    delegated work would silently run read-only under a writable chat), then the plugin
+    setting. The last step is the restrictive one when the setting is unset or invalid.
+    """
+    explicit = get_session_mode(session_id)
+    if explicit:
+        return explicit, "session"
+    parent = current_session_id()
+    if parent and parent != session_id:
+        inherited = get_session_mode(parent)
+        if inherited:
+            return inherited, "parent"
+    return default_mode(), "default"
+
+
+def guard(tool_name, args=None, task_id="", session_id="", **kwargs):
+    """pre_tool_call directive: block anything THIS SESSION's mode does not allow.
+
+    ``session_id`` is the agent's durable session id — the same string the desktop's
+    stored-session id carries. ``task_id`` is deliberately unused: it is a fresh uuid
+    per turn, so keying on it would forget the mode between turns.
+    """
+    mode, _source = resolve_mode(session_id)
     if not blocks_writes(mode):
         return None
     if tool_name in READ_ONLY_TOOLS:
@@ -206,38 +249,53 @@ def _plan_context(user_message=None) -> str:
         return _PLAN_FALLBACK_CONTEXT
 
 
-def plan_directive(user_message=None, **kwargs):
-    """pre_llm_call directive: in plan mode, hand this turn to the plan skill."""
-    if read_mode() != MODE_PLAN:
+def plan_directive(user_message=None, session_id="", **kwargs):
+    """pre_llm_call directive: in a PLAN session, hand this turn to the plan skill."""
+    if resolve_mode(session_id)[0] != MODE_PLAN:
         return None
     return {"context": _plan_context(user_message)}
 
 
 def _handle_readonly(raw_args: str) -> str:
-    """/readonly [status|readonly|plan|writable|on|off|toggle] — raw_args is everything after the name."""
+    """/readonly [status|readonly|plan|writable|on|off|toggle] — this session only.
+
+    ``raw_args`` is everything after the command name; the session comes from the
+    process binding, because a slash command receives no payload.
+    """
     arg = (raw_args or "").strip().lower()
-    if arg in ("", "status"):
-        mode = read_mode()
+    sid = current_session_id()
+    if not sid:
         return (
-            f"readonly-guard: {mode} — {_MODE_BLURB[mode]}\n"
+            "readonly-guard: no session context here — nothing was written. "
+            f"New sessions start as {default_mode()}. Run /readonly inside a chat, or "
+            "use the status-bar control; the default lives at "
+            "plugins.entries.readonly-guard.settings.default_mode."
+        )
+    if arg in ("", "status"):
+        mode, source = resolve_mode(sid)
+        return (
+            f"readonly-guard: {mode} for this session (from {source}) — {_MODE_BLURB[mode]}\n"
+            f"default for new sessions: {default_mode()}\n"
             f"modes: {', '.join(MODES)}\n"
+            f"session: {sid}\n"
             f"state file: {state_path()}\n"
             f"{_USAGE}\n"
-            "The switch applies to the NEXT tool call — no restart."
+            "The switch applies to the NEXT tool call in THIS session — no restart."
         )
     if arg == "toggle":
-        mode = next_mode()
+        mode = next_mode(resolve_mode(sid)[0])
     elif arg in _ALIASES:
         mode = _ALIASES[arg]
     elif arg in MODES:
         mode = arg
     else:
         return f"readonly-guard: unknown argument {arg!r} — {_USAGE}"
-    set_mode(mode, source="slash_command")
-    return f"readonly-guard: {mode} — {_MODE_BLURB[mode]}"
+    set_session_mode(sid, mode, source="slash_command")
+    return f"readonly-guard: {mode} for this session — {_MODE_BLURB[mode]}"
 
 
 def register(ctx):
+    set_reader(ctx.get_config)
     ctx.register_hook("pre_tool_call", guard)
     ctx.register_hook("pre_llm_call", plan_directive)
     ctx.register_command(
