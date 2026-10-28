@@ -80,5 +80,26 @@ class TestI18nKeys(unittest.TestCase):
         self.assertIn("loading", registered, "the tooltip shown before the first fetch resolves")
 
 
+class TestSessionScope(unittest.TestCase):
+    """The chip must speak about a SESSION, and name the draft case explicitly.
+
+    A chip that read the machine default and silently wrote it would look identical and
+    be wrong: this is the whole point of the change.
+    """
+
+    def test_the_chip_reads_the_focused_stored_session_id(self):
+        self.assertIn("focusedStoredSessionId", SOURCE)
+        self.assertIn("useValue", SOURCE)
+
+    def test_a_session_request_carries_the_session(self):
+        self.assertIn("?session=", SOURCE)
+        self.assertIn("body = session ?", SOURCE)
+
+    def test_the_draft_case_is_labelled_as_the_new_sessions_default(self):
+        keys = registered_i18n_keys()
+        self.assertIn("tip_draft", keys)
+        self.assertIn("NEW sessions", SOURCE)
+
+
 if __name__ == "__main__":
     unittest.main()
