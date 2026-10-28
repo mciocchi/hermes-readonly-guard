@@ -1,8 +1,22 @@
 name: readonly-guard
-version: "2.2"
+version: "3.0"
 description: Code-enforced posture with three runtime modes — readonly, plan, writable — switched by /readonly, the dashboard API, or the desktop chip.
 author: mciocchi
 provides_tools: []
 provides_hooks:
   - pre_tool_call
   - pre_llm_call
+
+# Settings a user can change in Settings → Plugins (and that the desktop chip writes
+# when no chat has a session yet). Declared here so Hermes validates the value and the
+# Plugins tab renders a form; `ctx.get_config("default_mode")` reads it.
+config_schema:
+  default_mode:
+    type: str
+    choices: [readonly, plan, writable]
+    default: readonly
+    label: Default mode for new sessions
+    description: >-
+      The guard's posture for a session that has never been switched. Read-only is the
+      restrictive default; plan asks for a plan instead of executing; writable blocks
+      nothing. Changing this never touches a session that already has its own setting.
