@@ -6,28 +6,61 @@ allowlist is blocked before it runs.
 
 ## Modes
 
-One mode at a time, stored in `<HERMES_HOME>/readonly-guard.state`:
+One mode **per session**, stored in `<HERMES_HOME>/readonly-guard.state`. Flipping the
+guard in one chat cannot loosen another chat that is already running — that is the point
+of the plugin. A session that has never been switched follows the `default_mode` setting,
+which defaults to `readonly`.
 
-| Mode | Inspection tools | `write_file` / `patch` to `.hermes/plans/*.md` | Probe commands via `terminal` | Everything else | Extra behaviour |
+| Mode (per session) | Inspection tools | `write_file` / `patch` to `.hermes/plans/*.md` | Probe commands via `terminal` | Everything else | Extra behaviour |
 |---|---|---|---|---|---|
 | `readonly` | allowed | blocked | blocked | blocked | — |
 | `plan` | allowed | allowed (single-file replace mode) | allowed (allowlist, see below) | blocked | every turn is handed Hermes' plan prompt plus a pointer to the `plan` skill |
 | `writable` | allowed | allowed | allowed | allowed | — |
 
-A missing, unreadable, unparseable, or non-object state file reads as `readonly`:
-the plugin exists to restrict, so the surprising default is the restrictive one.
-A 1.x file that stored only `enabled` is migrated on read, and writes keep that key
-so an older reader never sees a file it cannot understand.
+A missing, unreadable, unparseable, or non-object state file holds **no sessions**, so
+every session reads the configured default — and that default is the restrictive one
+(`readonly`). A 2.x file's top-level `mode` is ignored: it described the machine, and
+nothing may inherit a looser posture from it.
 
-Flip it with `/readonly [status|readonly|plan|writable|on|off|toggle]` (the `on`/`off`
-aliases are 1.x's), with the desktop status-bar control, or over
-`POST /api/plugins/readonly-guard/state {"mode": ...}`.
+| Surface | What it switches |
+|---|---|
+| `/readonly [status\|readonly\|plan\|writable\|on\|off\|toggle]` | the session you type it in |
+| Desktop status-bar control / palette rows | the focused chat; on a fresh draft, the default for new sessions |
+| `POST /api/plugins/readonly-guard/state {"mode": …, "session": "<id>"}` | that session (no `session` → the default) |
+| `plugins.entries.readonly-guard.settings.default_mode` | what a NEW session starts as |
+
+## The default mode setting
+
+`default_mode` decides what a session starts as. Set it in Settings → Plugins (the form
+comes from `plugin.yaml`'s `config_schema`), by clicking the status-bar control while no
+chat has a session yet, or by editing `config.yaml`:
+
+```yaml
+plugins:
+  entries:
+    readonly-guard:
+      settings:
+        default_mode: readonly   # readonly | plan | writable
+```
+
+Changing it never touches a session that already has its own mode. An unrecognised value
+reads as `readonly`.
 
 ## Design concerns
 
-- **One state file, every surface.** The agent hooks, the `/readonly` command and the
-  dashboard API all read and write the same file, so they cannot disagree. The mode is
-  machine-wide (one file per `HERMES_HOME`), not per session.
+- **One state file, every surface, one entry per session.** The agent hooks, the
+  `/readonly` command and the dashboard API all read and write the same file, so they
+  cannot disagree — and each session has its own entry, so a flip in one cannot loosen
+  another. `session_id` is the agent's durable id; `task_id` is a fresh uuid per turn and
+  is deliberately unused.
+- **A subagent inherits the session that spawned it.** A delegated child has its own
+  `session_id`, but the process still names its parent, so the child runs under the
+  parent's mode. Without that, delegated work would silently run read-only under a
+  writable chat.
+- **The table is written under a lock.** Two writers in one process (the chip and
+  `/readonly`) each read the table and write it back; without the lock one of them loses
+  the other's session. Readers are safe regardless: writes are atomic (`mkstemp` +
+  `replace`).
 - **Fail closed.** `pre_tool_call` is a policy hook: a callback that raises or times
   out blocks the tool instead of allowing it, and every unrecognised state reads as the
   restrictive mode.
@@ -60,8 +93,6 @@ aliases are 1.x's), with the desktop status-bar control, or over
   string decision about a command a shell will then interpret, so anything unrecognised
   is refused and a useful command sometimes is too. `readonly` mode keeps `terminal`
   blocked entirely: it is the mode you leave on when nothing may run.
-- **`patch` is never permitted, even for a plan file.** The exception is scoped to
-  `write_file`: it exists so a plan can be delivered, not so files can be edited.
 - **`todo_list` is allowlisted on purpose.** It writes per-session task state, not files
   or remote state, and a plan is built with one.
 - **Contributions name their area with the SDK's constants, never a literal.** `'PALETTE_AREA'`
@@ -75,15 +106,16 @@ aliases are 1.x's), with the desktop status-bar control, or over
 readonly-guard/
 ├── __init__.py             agent half: pre_tool_call guard, pre_llm_call plan
 │                           directive, /readonly command, register(ctx)
-├── state.py                the mode file: read_mode / set_mode / next_mode /
-│                           blocks_writes / status — the single source of truth
+├── state.py                the session table: get_session_mode / set_session_mode /
+│                           next_mode / blocks_writes / status — the source of truth
+├── settings.py             the one setting: default_mode (read via ctx.get_config)
 ├── dashboard/
 │   ├── manifest.json       capability-page metadata
 │   └── plugin_api.py       FastAPI router at /api/plugins/readonly-guard/
 ├── desktop/
 │   └── plugin.js           status-bar mode control + palette commands (ESM)
 ├── tests/                  stdlib unittest, one file per concern
-└── plugin.yaml             manifest: provides_hooks: pre_tool_call, pre_llm_call
+└── plugin.yaml             manifest: provides_hooks, config_schema (default_mode)
 ```
 
 ## Running the tests
@@ -126,3 +158,14 @@ is newer. After editing `desktop/plugin.js`, sidebar → Capabilities → Plugin
 ```bash
 hermes plugins doctor readonly-guard    # no "stale copy" warning once refreshed
 ```
+
+## Upgrading from 2.x
+
+2.x stored ONE mode for the whole machine in `readonly-guard.state`. 3.0 ignores that
+value: a machine-wide posture is what this release removes, and inheriting it would hand a
+looser mode to every session at once. Every session therefore starts at `default_mode`
+(`readonly` unless you changed it). The file is replaced the first time a session is
+switched, and the old value is never read.
+
+The desktop half changed shape (a per-session chip), so press **Rescan** in
+Capabilities → Plugins after upgrading.
