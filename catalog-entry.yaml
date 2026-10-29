@@ -1,0 +1,38 @@
+# The entry that gets copied into a PR against NousResearch/hermes-agent as
+# plugin-catalog/readonly-guard.yaml. It is not read by the plugin loader; it is
+# versioned here so `tests/test_packaging.py` can pin its URLs and its capabilities
+# block to what register() actually wires, and so the version cannot drift.
+#
+# The repository is `hermes-readonly-guard`; the catalog KEY below is the manifest name
+# (`readonly-guard`), which is what users search and install.
+#
+# No `requires_hermes`: decided against. An over-tight floor makes the loader skip the
+# plugin, and the test suite would not notice.
+#
+# `sha` is filled at publish time: the catalog requires a full 40-character commit SHA
+# of a public repository. Until then it stays empty and no test reads it.
+name: readonly-guard
+repo: https://github.com/mciocchi/hermes-readonly-guard
+sha: ""
+subdir: ""
+description: >-
+  Three-mode, per-session tool guard: read-only, plan (inspection only, plus the plan
+  markdown and an allowlist of read-only shell probes), and writable. Switched from the
+  status bar, /readonly, or the dashboard API; a session that is never switched follows a
+  configurable default (read-only). Disclosure — registers a pre_tool_call hook that can
+  block any tool call and fails closed when the hook raises; writes
+  <HERMES_HOME>/readonly-guard.state (session -> mode) and
+  plugins.entries.readonly-guard.settings.default_mode; in plan mode runs single,
+  allowlisted, read-only shell commands through terminal (a speed bump, not a sandbox);
+  no network calls, no environment variables, no Python dependencies.
+maintainer: mciocchi
+tier: community
+category: desktop
+docs_url: https://github.com/mciocchi/hermes-readonly-guard
+version: "3.3"
+platforms: []
+capabilities:
+  provides_tools: []
+  provides_hooks: [pre_tool_call, pre_llm_call]
+  provides_middleware: []
+  requires_env: []
