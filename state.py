@@ -89,7 +89,7 @@ def _read_raw() -> dict:
     (which would 500).
     """
     try:
-        raw = json.loads(state_path().read_text())
+        raw = json.loads(state_path().read_text(encoding="utf-8"))
     except Exception:
         return {}
     return raw if isinstance(raw, dict) else {}
@@ -116,6 +116,31 @@ def get_session_mode(session_id: str) -> str | None:
     return str(entry["mode"]) if entry else None
 
 
+#: `os.replace` refusals to tolerate before giving up. Windows returns PermissionError
+#: while another process has the destination open; the window is a dashboard poll, so five
+#: attempts over ~300ms covers it without stalling a tool call.
+_REPLACE_ATTEMPTS = 5
+_REPLACE_DELAY = 0.02
+
+
+def _replace_with_retry(src: str, dst: Path) -> None:
+    """``os.replace`` with a short retry, because Windows refuses to replace an open file.
+
+    POSIX renames an open path happily. Windows does not, and CPython opens files without
+    FILE_SHARE_DELETE, so a concurrent reader — the desktop chip's ``GET /state`` — makes
+    the replace fail for the few milliseconds it holds the file. The last error is raised
+    once the attempts run out: a write that did not happen must not look like one that did.
+    """
+    for attempt in range(_REPLACE_ATTEMPTS):
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError:
+            if attempt == _REPLACE_ATTEMPTS - 1:
+                raise
+            time.sleep(_REPLACE_DELAY * (attempt + 1))
+
+
 def _write(payload: dict) -> None:
     """Replace the state file atomically.
 
@@ -128,9 +153,9 @@ def _write(payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     handle, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
     try:
-        with os.fdopen(handle, "w") as tmp:
+        with os.fdopen(handle, "w", encoding="utf-8") as tmp:
             tmp.write(json.dumps(payload, indent=2) + "\n")
-        os.replace(tmp_name, path)
+        _replace_with_retry(tmp_name, path)
     except BaseException:
         try:
             os.unlink(tmp_name)
