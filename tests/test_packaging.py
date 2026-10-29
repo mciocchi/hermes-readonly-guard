@@ -125,5 +125,27 @@ class TestCatalogEntry(unittest.TestCase):
         self.assertEqual(self.capabilities.get("requires_env"), [])
 
 
+#: A path under a real home directory: /home/<name>/… or /Users/<name>/….
+HOME_PATH_RE = re.compile(r"/(?:home|Users)/[A-Za-z0-9._-]+/")
+#: Sources a reader or a reviewer sees. Docs are included on purpose.
+TEXT_SUFFIXES = {".py", ".js", ".json", ".yaml", ".yml", ".md", ".txt"}
+
+
+class TestNoMachineSpecificPaths(unittest.TestCase):
+    def test_no_source_file_hardcodes_a_home_directory(self):
+        """A test that only passes on the author's machine is a broken test, and the path
+        is also the author's username, published."""
+        offenders = []
+        for path in sorted(PLUGIN_DIR.rglob("*")):
+            parts = set(path.parts)
+            if not path.is_file() or "__pycache__" in parts or ".git" in parts:
+                continue
+            if path.suffix.lower() not in TEXT_SUFFIXES:
+                continue
+            if HOME_PATH_RE.search(path.read_text(errors="ignore")):
+                offenders.append(str(path.relative_to(PLUGIN_DIR)))
+        self.assertEqual(offenders, [])
+
+
 if __name__ == "__main__":
     unittest.main()

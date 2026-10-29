@@ -98,7 +98,7 @@ class TestPlan(GuardTestCase):
         for path in (
             ".hermes/plans/2026-10-16_113922-thing.md",
             "./.hermes/plans/thing.md",
-            "/home/user/projects/thanatos/hosts/.hermes/plans/thing.md",
+            "/srv/work/.hermes/plans/thing.md",
             "../../.hermes/plans/deep/nested.md",
         ):
             self.assertIsNone(self.block("write_file", {"path": path, "content": "x"}), path)

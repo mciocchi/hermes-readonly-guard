@@ -8,7 +8,9 @@ registers, and simply never appears. These checks parse the file rather than run
 
 from __future__ import annotations
 
+import os
 import re
+import sys
 import unittest
 from pathlib import Path
 
@@ -16,8 +18,27 @@ from plugin_under_test import PLUGIN_DIR
 
 SOURCE = (PLUGIN_DIR / "desktop" / "plugin.js").read_text()
 
-#: The desktop app's SDK barrel — the authority on what a plugin may import.
-SDK_BARREL = Path("/home/user/.hermes/hermes-agent/apps/desktop/src/sdk/index.ts")
+def sdk_barrel() -> Path | None:
+    """The desktop app's SDK barrel — the authority on what a plugin may import.
+
+    Found, never hardcoded: a path from one machine makes this test skip silently
+    everywhere else, which is the same as deleting it. Candidates, in order: an explicit
+    ``HERMES_REPO``, the checkout the running interpreter belongs to
+    (``<repo>/venv/bin/python`` -> three parents up), and the default install location.
+    ``None`` means the Desktop sources are not on this machine.
+    """
+    candidates = [Path(os.environ["HERMES_REPO"])] if os.environ.get("HERMES_REPO") else []
+    candidates.append(Path(sys.executable).resolve().parents[2])
+    candidates.append(Path.home() / ".hermes" / "hermes-agent")
+    for root in candidates:
+        barrel = root / "apps" / "desktop" / "src" / "sdk" / "index.ts"
+        if barrel.is_file():
+            return barrel
+    return None
+
+
+#: ``None`` when this machine has no Desktop sources; the SDK check then skips.
+SDK_BARREL = sdk_barrel()
 
 SDK_IMPORT_RE = re.compile(r"import\s*\{([^}]+)\}\s*from\s*'@hermes/plugin-sdk'")
 AREA_RE = re.compile(r"\barea:\s*([^,\n]+)")
@@ -31,8 +52,8 @@ def registered_i18n_keys() -> set[str]:
 
 class TestSdkImports(unittest.TestCase):
     def test_every_imported_identifier_is_a_real_sdk_export(self):
-        if not SDK_BARREL.is_file():
-            self.skipTest(f"desktop SDK barrel not present at {SDK_BARREL}")
+        if SDK_BARREL is None:
+            self.skipTest("desktop SDK sources not found (set HERMES_REPO to point at a checkout)")
         barrel = SDK_BARREL.read_text()
         match = SDK_IMPORT_RE.search(SOURCE)
         if match is None:
