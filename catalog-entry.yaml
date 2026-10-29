@@ -32,7 +32,7 @@ tier: community
 category: desktop
 docs_url: https://github.com/mciocchi/hermes-readonly-guard
 image: "https://raw.githubusercontent.com/mciocchi/hermes-readonly-guard/d2b6317e6bf67f35bb0bbd98c3e508595cfea36b/docs/banner.png"
-version: "3.5"
+version: "3.6"
 platforms: [linux, macos, windows]
 capabilities:
   provides_tools: []

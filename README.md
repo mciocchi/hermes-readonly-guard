@@ -105,6 +105,26 @@ plugins:
 Changing it never touches a session that already has its own mode. An unrecognised value
 reads as `readonly`.
 
+### Resetting on startup
+
+`reset_sessions_on_startup` (off by default) rewrites every stored session to `read-only`
+when a process starts handling agent work, so a session you left in `writable` cannot
+survive a restart:
+
+```yaml
+plugins:
+  entries:
+    readonly-guard:
+      settings:
+        reset_sessions_on_startup: true   # unquoted; the string "true" reads as off
+```
+
+The sweep runs once per process, on its first tool call — not at import, so
+`hermes plugins doctor` and `plugins validate` never touch your state. "A process that
+starts handling turns" includes a CLI command, a cron job and the gateway, and the change
+can only ever tighten a session: if one of them clears a mode you set in the desktop, that
+is this setting doing its job, and the fix is a re-arm or turning it off.
+
 ## What it does not protect against
 
 - **It blocks tool calls, not the machine.** A command that is already running, a

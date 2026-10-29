@@ -314,6 +314,7 @@ def _handle_readonly(raw_args: str) -> str:
         return (
             f"readonly-guard: {mode} for this session (from {source}) — {_MODE_BLURB[mode]}\n"
             f"default for new sessions: {default_mode()}\n"
+            f"set all sessions to read-only on startup: {'on' if reset_on_startup() else 'off'}\n"
             f"modes: {', '.join(MODES)}\n"
             f"session: {sid}\n"
             f"state file: {state_path()}\n"
