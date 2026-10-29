@@ -213,41 +213,77 @@ class TestReplaceUnderReader(StateCase):
         self.assertEqual(leftovers, [], "the temp file must be cleaned up on failure")
 
 
-class TestResetAll(StateCase):
-    """`reset_all` is the startup sweep: every stored session becomes read-only.
+class TestWritableExpiry(StateCase):
+    """`effective_mode` is the whole rule; it takes the clock as an argument on purpose."""
 
-    Entries are rewritten, never dropped: an empty table means "no sessions", and every
-    session would then fall back to `default_mode`, which may be writable.
-    """
+    NOW = 1_800_000_000.0
 
-    def test_every_session_becomes_readonly(self):
+    def entry(self, mode="writable", renewed_at=None, renewed_turn=""):
+        entry = {"mode": mode, "updated_at": 0, "updated_by": "test"}
+        if renewed_at is not None:
+            entry["renewed_at"] = renewed_at
+        if renewed_turn:
+            entry["renewed_turn"] = renewed_turn
+        return entry
+
+    def test_a_fresh_grant_survives(self):
+        entry = self.entry(renewed_at=self.NOW - 60)
+        self.assertEqual(state.effective_mode(entry, ttl_minutes=30, now=self.NOW), "writable")
+
+    def test_a_stale_grant_reads_as_readonly(self):
+        entry = self.entry(renewed_at=self.NOW - 31 * 60)
+        self.assertEqual(state.effective_mode(entry, ttl_minutes=30, now=self.NOW), "readonly")
+
+    def test_zero_disables_the_expiry(self):
+        entry = self.entry(renewed_at=self.NOW - 10 * 3600)
+        self.assertEqual(state.effective_mode(entry, ttl_minutes=0, now=self.NOW), "writable")
+
+    def test_the_turn_that_renewed_it_is_never_cut_off(self):
+        """A long turn outlives the TTL: same task_id, same verdict."""
+        entry = self.entry(renewed_at=self.NOW - 90 * 60, renewed_turn="task-7")
+        self.assertEqual(
+            state.effective_mode(entry, ttl_minutes=30, now=self.NOW, turn_id="task-7"), "writable"
+        )
+        self.assertEqual(
+            state.effective_mode(entry, ttl_minutes=30, now=self.NOW, turn_id="task-8"), "readonly"
+        )
+
+    def test_an_entry_without_a_stamp_survives_until_its_next_turn(self):
+        self.assertEqual(state.effective_mode(self.entry(), ttl_minutes=30, now=self.NOW), "writable")
+
+    def test_other_modes_are_untouched(self):
+        for mode in ("readonly", "plan"):
+            self.assertEqual(state.effective_mode(self.entry(mode), ttl_minutes=1, now=self.NOW), mode)
+
+    def test_seconds_left_is_reported(self):
+        entry = self.entry(renewed_at=self.NOW - 10 * 60)
+        self.assertEqual(state.expires_in(entry, ttl_minutes=30, now=self.NOW), 20 * 60)
+        self.assertIsNone(state.expires_in(entry, ttl_minutes=0, now=self.NOW))
+        self.assertIsNone(state.expires_in(self.entry("plan"), ttl_minutes=30, now=self.NOW))
+
+    def test_a_lapsed_grant_is_latched_to_readonly(self):
         state.set_session_mode("s-w", "writable", source="test")
-        state.set_session_mode("s-p", "plan", source="test")
-        state.set_session_mode("s-r", "readonly", source="test")
-        self.assertEqual(state.reset_all(reason="startup"), 2)  # two changed, one already
-        for sid in ("s-w", "s-p", "s-r"):
-            self.assertEqual(state.get_session_mode(sid), "readonly", sid)
+        table = state._sessions()
+        table["s-w"]["renewed_at"] = self.NOW - 31 * 60
+        state._write({"version": state.SCHEMA_VERSION, "sessions": table})
+        self.assertEqual(state.renew_or_lapse("s-w", "task-1", 30, now=self.NOW), "readonly")
+        self.assertEqual(state.get_session_mode("s-w"), "readonly")
 
-    def test_no_entry_is_dropped(self):
-        for i in range(5):
-            state.set_session_mode(f"s{i}", "writable", source="test")
-        state.reset_all(reason="startup")
-        self.assertEqual(len(state._sessions()), 5, "the table must keep its sessions")
-
-    def test_the_reason_is_recorded(self):
+    def test_a_live_grant_is_renewed_and_remembers_its_turn(self):
         state.set_session_mode("s-w", "writable", source="test")
-        state.reset_all(reason="startup")
-        self.assertEqual(state._sessions()["s-w"]["updated_by"], "startup")
+        table = state._sessions()          # set_session_mode stamps the real clock
+        table["s-w"]["renewed_at"] = self.NOW - 60
+        state._write({"version": state.SCHEMA_VERSION, "sessions": table})
+        self.assertEqual(state.renew_or_lapse("s-w", "task-9", 30, now=self.NOW), "writable")
+        entry = state._sessions()["s-w"]
+        self.assertEqual(entry["renewed_at"], self.NOW)
+        self.assertEqual(entry["renewed_turn"], "task-9")
 
-    def test_an_empty_table_writes_nothing(self):
-        self.assertEqual(state.reset_all(reason="startup"), 0)
-        self.assertFalse(state.state_path().exists(), "no file for an empty table")
-
-    def test_an_already_readonly_table_is_left_alone(self):
+    def test_renewing_a_session_that_is_not_writable_does_nothing(self):
         state.set_session_mode("s-r", "readonly", source="test")
-        before = state._sessions()["s-r"]["updated_at"]
-        self.assertEqual(state.reset_all(reason="startup"), 0)
-        self.assertEqual(state._sessions()["s-r"]["updated_at"], before, "no churn when nothing changes")
+        before = state._sessions()["s-r"]
+        self.assertEqual(state.renew_or_lapse("s-r", "task-1", 30, now=self.NOW), "readonly")
+        self.assertEqual(state._sessions()["s-r"], before)
 
 
 if __name__ == "__main__":

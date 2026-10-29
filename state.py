@@ -108,6 +108,88 @@ def _sessions(raw: dict | None = None) -> dict[str, dict]:
     }
 
 
+def session_entry(session_id: str) -> dict | None:
+    """The raw entry for one session, or ``None`` when it follows the default."""
+    return _sessions().get(str(session_id)) if session_id else None
+
+
+#: Extra keys a writable entry carries: when its clock last started, and the turn that
+#: started it. Both absent on a 3.5 entry, which is why a missing stamp means "not yet".
+RENEWED_AT = "renewed_at"
+RENEWED_TURN = "renewed_turn"
+
+
+def effective_mode(
+    entry: dict | None, *, ttl_minutes: int, now: float | None = None, turn_id: str = ""
+) -> str | None:
+    """The mode an entry really grants now, applying the writable expiry.
+
+    Four ways a grant survives: it is not writable, the TTL is off, the clock never
+    started (a 3.5 entry), or this is the turn that renewed it — so a turn that is already
+    running is never cut off mid-way, which is the whole point of measuring silence rather
+    than workload.
+    """
+    if not isinstance(entry, dict):
+        return None
+    mode = entry.get("mode")
+    if mode not in MODES:
+        return None
+    if mode != MODE_WRITABLE or ttl_minutes <= 0:
+        return mode
+    if turn_id and str(entry.get(RENEWED_TURN) or "") == str(turn_id):
+        return mode
+    renewed = entry.get(RENEWED_AT)
+    if not isinstance(renewed, (int, float)):
+        return mode
+    if (now if now is not None else time.time()) - float(renewed) > ttl_minutes * 60:
+        return MODE_READONLY
+    return mode
+
+
+def expires_in(
+    entry: dict | None, *, ttl_minutes: int, now: float | None = None
+) -> int | None:
+    """Seconds left on a writable grant, or ``None`` when nothing is counting down."""
+    if not isinstance(entry, dict) or entry.get("mode") != MODE_WRITABLE or ttl_minutes <= 0:
+        return None
+    renewed = entry.get(RENEWED_AT)
+    if not isinstance(renewed, (int, float)):
+        return None
+    left = ttl_minutes * 60 - ((now if now is not None else time.time()) - float(renewed))
+    return max(0, int(left))
+
+
+def renew_or_lapse(
+    session_id: str, turn_id: str, ttl_minutes: int, now: float | None = None
+) -> str:
+    """Turn-start housekeeping for one session: renew the clock, or latch it to readonly.
+
+    Only a ``writable`` entry is touched, so a readonly or plan session costs no write.
+    Latching is a real write on purpose: an expired grant must not come back to life
+    because the user said something after the deadline.
+    """
+    if not session_id or ttl_minutes <= 0:
+        return get_session_mode(session_id) or ""
+    stamp = now if now is not None else time.time()
+    with _WRITE_LOCK:
+        table = dict(_sessions())
+        entry = table.get(str(session_id))
+        if not entry or entry.get("mode") != MODE_WRITABLE:
+            return str((entry or {}).get("mode") or "")
+        if effective_mode(entry, ttl_minutes=ttl_minutes, now=stamp) == MODE_READONLY:
+            table[str(session_id)] = {
+                "mode": MODE_READONLY, "updated_at": stamp, "updated_by": "expiry",
+            }
+            _write({"version": SCHEMA_VERSION, "sessions": table})
+            return MODE_READONLY
+        entry = dict(entry)
+        entry[RENEWED_AT] = stamp
+        entry[RENEWED_TURN] = str(turn_id)
+        table[str(session_id)] = entry
+        _write({"version": SCHEMA_VERSION, "sessions": table})
+    return MODE_WRITABLE
+
+
 def get_session_mode(session_id: str) -> str | None:
     """This session's explicit mode, or ``None`` when it follows the default."""
     if not session_id:
@@ -177,7 +259,11 @@ def set_session_mode(session_id: str, mode: str, source: str = "unknown") -> dic
     now = time.time()
     with _WRITE_LOCK:
         table = dict(_sessions())
-        table[str(session_id)] = {"mode": mode, "updated_at": now, "updated_by": source}
+        entry = {"mode": mode, "updated_at": now, "updated_by": source}
+        if mode == MODE_WRITABLE:          # start the expiry clock when arming
+            entry[RENEWED_AT] = now
+            entry[RENEWED_TURN] = ""
+        table[str(session_id)] = entry
         if len(table) > SESSION_CAP:
             newest = sorted(table.items(), key=lambda kv: float(kv[1].get("updated_at") or 0.0))
             table = dict(newest[-SESSION_CAP:])
