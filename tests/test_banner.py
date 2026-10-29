@@ -2,12 +2,11 @@
 
 The image is what a user sees before reading anything. These checks prove the file
 exists, is 2:1 (the schema's requirement), uses the colours the plugin actually ships,
-and that the entry never carries a URL that is not pinned to a commit.
+and that the entry's image is the banner at the entry's own commit.
 """
 
 from __future__ import annotations
 
-import re
 import struct
 import unittest
 
@@ -19,13 +18,6 @@ from test_desktop_contract import tones
 BANNER = PLUGIN_DIR / "docs" / "banner.png"
 SOURCE = PLUGIN_DIR / "docs" / "banner.html"
 ENTRY = PLUGIN_DIR / "catalog-entry.yaml"
-
-#: A raw URL of this repository at a full commit SHA, ending in the banner's own path.
-PINNED_IMAGE_RE = re.compile(
-    r"^https://raw\.githubusercontent\.com/mciocchi/hermes-readonly-guard/"
-    r"[0-9a-f]{40}/docs/banner\.png$"
-)
-
 
 def png_size(path) -> tuple[int, int]:
     """(width, height) from the PNG IHDR chunk — no imaging library required."""
@@ -51,11 +43,23 @@ class TestBanner(unittest.TestCase):
             self.assertIn(bg, html, f"{mode}'s fill {bg} is missing from the banner")
             self.assertIn(fg, html, f"{mode}'s text colour {fg} is missing from the banner")
 
-    def test_the_entry_either_omits_the_image_or_pins_one(self):
-        image = str(yaml.safe_load(ENTRY.read_text()).get("image") or "")
-        self.assertTrue(
-            image == "" or PINNED_IMAGE_RE.match(image),
-            f"image must be empty or pinned to a 40-character SHA, got {image!r}",
+    def test_the_entry_pins_a_full_sha_and_the_image_that_sha_carries(self):
+        """The published entry names one commit, and its image is that commit's banner.
+
+        Exact equality rather than a pattern: the catalog renders the README and this
+        image from the same SHA, so an image pointing at a different commit is a card
+        that survives a code change it never mentions. A later `sha` bump fails here
+        until `image:` follows it, which is the reminder this file exists to give.
+        """
+        entry = yaml.safe_load(ENTRY.read_text())
+        sha = str(entry.get("sha") or "")
+        image = str(entry.get("image") or "")
+        self.assertRegex(sha, r"^[0-9a-f]{40}$", "a published entry needs a full commit SHA")
+        self.assertEqual(
+            image,
+            "https://raw.githubusercontent.com/mciocchi/hermes-readonly-guard/"
+            f"{sha}/docs/banner.png",
+            "image must be the banner at the entry's own sha",
         )
 
 

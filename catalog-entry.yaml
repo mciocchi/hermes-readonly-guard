@@ -9,11 +9,12 @@
 # No `requires_hermes`: decided against. An over-tight floor makes the loader skip the
 # plugin, and the test suite would not notice.
 #
-# `sha` is filled at publish time: the catalog requires a full 40-character commit SHA
-# of a public repository. Until then it stays empty and no test reads it.
+# `sha` is the published commit: it pins the entry, the README the docs render, and the
+# card image. A push that changes the code must bump `sha` and the `image:` below, and
+# `tests/test_banner.py` fails until both move together.
 name: readonly-guard
 repo: https://github.com/mciocchi/hermes-readonly-guard
-sha: ""
+sha: "80b58608000413064be6e91b9bb3df0067b2069b"
 subdir: ""
 description: >-
   Three-mode, per-session tool guard: read-only, plan (inspection only, plus the plan
@@ -29,9 +30,7 @@ maintainer: mciocchi
 tier: community
 category: desktop
 docs_url: https://github.com/mciocchi/hermes-readonly-guard
-# `image:` is filled at pin time, once a commit SHA exists (docs/banner.png is committed
-# and 2:1; the URL cannot be written before the commit it points at does):
-#   https://raw.githubusercontent.com/mciocchi/hermes-readonly-guard/<40-hex>/docs/banner.png
+image: "https://raw.githubusercontent.com/mciocchi/hermes-readonly-guard/80b58608000413064be6e91b9bb3df0067b2069b/docs/banner.png"
 version: "3.4"
 platforms: []
 capabilities:
