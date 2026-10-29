@@ -76,12 +76,19 @@ class TestVersionsAgree(unittest.TestCase):
     """Three files state the version. A release bumps all three or none."""
 
     def test_the_manifest_the_dashboard_and_the_entry_agree(self):
+        """The manifest is the source of truth; the other two must match it.
+
+        Derived rather than pinned to a literal: a literal here is a FOURTH place a
+        release has to remember, and forgetting it turns a routine version bump red for
+        a reason that has nothing to do with the change. A bump that misses the
+        dashboard or the catalog entry still fails, which is the tripwire that matters.
+        """
         manifest_version = str(read_manifest().get("version"))
         dashboard_version = str(json.loads(DASHBOARD.read_text())["version"])
         entry_version = str(yaml.safe_load(ENTRY.read_text())["version"])
         self.assertEqual(
-            {manifest_version, dashboard_version, entry_version},
-            {"3.3"},
+            {dashboard_version, entry_version},
+            {manifest_version},
             f"manifest={manifest_version} dashboard={dashboard_version} entry={entry_version}",
         )
 

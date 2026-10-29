@@ -1,5 +1,5 @@
 name: readonly-guard
-version: "3.3"
+version: "3.4"
 description: Per-session code-enforced posture with three modes — readonly, plan, writable — switched by /readonly, the dashboard API, or the desktop chip; new sessions start at the configurable default.
 author: mciocchi
 license: MIT

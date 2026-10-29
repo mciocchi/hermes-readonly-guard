@@ -2,8 +2,8 @@
 
 A Hermes plugin that holds an agent to a posture **in code**, not in a prompt. While
 `readonly` or `plan` is active, every tool call that is not on a small inspection
-allowlist is refused before it runs, and the refusal happens in `pre_tool_call`, ahead of
-the approval layer — so `--yolo` and `approvals.mode: off` do not lift it.
+allowlist — or a single, allowlisted, read-only command — is refused before it runs, and
+the refusal happens in `pre_tool_call`, ahead of the approval layer — so `--yolo` and `approvals.mode: off` do not lift it.
 
 The mode is **per session**. Turning the guard off to do one edit cannot turn it off under
 another chat that is already running, which is the failure a machine-wide switch
@@ -51,20 +51,20 @@ no network calls and defines no environment variables.
 
 ## The three modes
 
-| Mode       | Inspection tools | Plan markdown | Single read-only probes | Everything else |
-|------------|------------------|---------------|-------------------------|-----------------|
-| `readonly` | allowed          | blocked       | blocked                 | **blocked**     |
-| `plan`     | allowed          | allowed       | allowed (allowlist)     | **blocked**     |
-| `writable` | allowed          | allowed       | allowed                 | allowed         |
+| Mode       | Inspection tools | Single read-only probes | Plan markdown | Everything else |
+|------------|------------------|-------------------------|---------------|-----------------|
+| `readonly` | allowed          | allowed (allowlist)     | blocked       | **blocked**     |
+| `plan`     | allowed          | allowed (allowlist)     | allowed       | **blocked**     |
+| `writable` | allowed          | allowed                 | allowed       | allowed         |
 
-- **`readonly`** is the default, and the mode you leave on when nothing may run. Thirteen
-  inspection tools stay available: `read_file`, `search_files`, `skill_view`,
-  `web_search`, `session_search`, and the rest of the list in `__init__.py`.
-- **`plan`** blocks everything `readonly` blocks, with two exceptions: the plan markdown
-  the `plan` skill writes (`.hermes/plans/*.md`, written with `write_file` or a single-file
-  `patch`), and single read-only shell commands such as `git log` or `rg`, so a plan can
-  read the workspace. Every turn in `plan` is handed Hermes' own plan prompt plus a
-  pointer to the `plan` skill.
+- **`readonly`** is the default, and the mode you leave on when nothing may be written.
+  Thirteen inspection tools stay available — `read_file`, `search_files`, `skill_view`,
+  `web_search`, `session_search`, and the rest of the list in `__init__.py` — plus single
+  read-only commands such as `ls`, `git log`, or `rg`, so a session can still see the
+  state of the workspace. Nothing is written, sent, or scheduled.
+- **`plan`** is `readonly` plus one thing: the plan markdown the `plan` skill writes
+  (`.hermes/plans/*.md`, written with `write_file` or a single-file `patch`). Every turn
+  in `plan` is handed Hermes' own plan prompt plus a pointer to the `plan` skill.
 - **`writable`** blocks nothing.
 
 ## Switching it
@@ -105,11 +105,13 @@ reads as `readonly`.
 - **It blocks tool calls, not the machine.** A command that is already running, a
   background process, or something outside Hermes is not affected. The guard is a veto on
   the tools Hermes is about to call, nothing more.
-- **Plan-mode probes are a speed bump, not a sandbox.** Every verdict is a string decision
-  about a command a shell will then interpret: one program per call, an allowlist of
-  programs, a per-flag policy for `git` and `find`, and composition (`;`, `&&`, `|`, `>`,
-  `<`, `$(…)`, backticks, newlines) refused rather than parsed. Anything unrecognised is
-  refused, so a useful command sometimes is too.
+- **Probes are a speed bump, not a sandbox**, in `readonly` and `plan` alike. Every verdict
+  is a string decision about a command a shell will then interpret: one program per call,
+  an allowlist of programs, a per-flag policy for `git`, `file`, and `find`, and
+  composition (`;`, `&&`, `|`, `>`, `<`, `$(…)`, backticks, newlines) refused rather than
+  parsed. Anything unrecognised is refused, so a useful command sometimes is too.
+- **A probe can read anything you can read** — `cat ~/.ssh/id_rsa` is admitted, exactly as
+  `read_file` already is. This guard is about writes and execution, not confidentiality.
 - **`writable` really does block nothing**, including `terminal`, `write_file`, and
   `delegate_task`. That is the mode you pick deliberately, not one to leave on.
 - **A subagent inherits the session that spawned it.** A delegated child has its own
@@ -130,7 +132,7 @@ reads as `readonly`.
 | A mode change seems to be ignored            | `/readonly status` shows the session id the guard is using. A new chat has its own entry, and a session with no entry follows `default_mode`.                                                                                                          |
 | `/readonly` answers "no session context"     | The caller had no session bound, so nothing was written — by design. Use it inside a chat.                                                                                                                                                             |
 | Everything is blocked right after an upgrade | 3.0 ignores 2.x's machine-wide mode. Set the mode in the session, or set `default_mode`.                                                                                                                                                               |
-| A command is refused by `plan` mode          | Only single, allowlisted, read-only commands are admitted. Split the command, or use a session in `writable`.                                                                                                                                          |
+| A command is refused by `readonly` or `plan` | Only single, allowlisted, read-only commands are admitted. Split the command, or use a session in `writable`.                                                                                                                                          |
 
 ## Uninstall
 

@@ -2,6 +2,6 @@
   "name": "readonly-guard",
   "label": "Read-only guard",
   "description": "Code-enforced readonly / plan / writable posture with a clickable switch.",
-  "version": "3.3",
+  "version": "3.4",
   "api": "plugin_api.py"
 }

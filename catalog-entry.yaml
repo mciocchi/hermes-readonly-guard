@@ -32,7 +32,7 @@ docs_url: https://github.com/mciocchi/hermes-readonly-guard
 # `image:` is filled at pin time, once a commit SHA exists (docs/banner.png is committed
 # and 2:1; the URL cannot be written before the commit it points at does):
 #   https://raw.githubusercontent.com/mciocchi/hermes-readonly-guard/<40-hex>/docs/banner.png
-version: "3.3"
+version: "3.4"
 platforms: []
 capabilities:
   provides_tools: []
