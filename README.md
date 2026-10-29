@@ -99,7 +99,7 @@ reads as `readonly`.
   is not the palette — the constant's value is `'palette'` — and a literal registers
   silently and never renders. `tests/test_desktop_contract.py` fails on any literal area
   id; that check exists because 1.1 shipped three dead palette rows exactly this way.
-- **The active mode is a coloured pill, and only the active one.** Blue `readonly`,
+- **The active mode is a coloured pill, and only the active one.** Green `readonly`,
   yellow `plan`, red `writable` — safe, caution, nothing-is-blocked. The colour is a
   filled pill whose text colour is chosen for contrast (dark text on yellow), not a tint
   of the label, because a tinted 11px amber label is unreadable on the light theme. The
