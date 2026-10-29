@@ -1,38 +1,92 @@
 # readonly-guard
 
-A Hermes plugin that enforces a posture **in code**, not in the prompt: while a
-restricting mode is active, every tool call that is not on a small inspection
-allowlist is blocked before it runs.
+A Hermes plugin that holds an agent to a posture **in code**, not in a prompt. While
+`readonly` or `plan` is active, every tool call that is not on a small inspection
+allowlist is refused before it runs, and the refusal happens in `pre_tool_call`, ahead of
+the approval layer — so `--yolo` and `approvals.mode: off` do not lift it.
 
-## Modes
+The mode is **per session**. Turning the guard off to do one edit cannot turn it off under
+another chat that is already running, which is the failure a machine-wide switch
+guarantees eventually.
 
-One mode **per session**, stored in `<HERMES_HOME>/readonly-guard.state`. Flipping the
-guard in one chat cannot loosen another chat that is already running — that is the point
-of the plugin. A session that has never been switched follows the `default_mode` setting,
-which defaults to `readonly`.
+Published as **`hermes-readonly-guard`**; it installs and registers as **`readonly-guard`**.
 
-| Mode (per session) | Inspection tools | `write_file` / `patch` to `.hermes/plans/*.md` | Probe commands via `terminal` | Everything else | Extra behaviour |
-|---|---|---|---|---|---|
-| `readonly` | allowed | blocked | blocked | blocked | — |
-| `plan` | allowed | allowed (single-file replace mode) | allowed (allowlist, see below) | blocked | every turn is handed Hermes' plan prompt plus a pointer to the `plan` skill |
-| `writable` | allowed | allowed | allowed | allowed | — |
+## Why
 
-A missing, unreadable, unparseable, or non-object state file holds **no sessions**, so
-every session reads the configured default — and that default is the restrictive one
-(`readonly`). A 2.x file's top-level `mode` is ignored: it described the machine, and
-nothing may inherit a looser posture from it.
+- **A prompt is a request.** A model that ignores instructions, or a session started with
+  `--yolo`, still cannot call `write_file` in `readonly`: the hook vetos the call.
+- **One switch per session.** Each session has its own entry in one small table, so
+  loosening one chat leaves the others exactly where they were.
+- **Plan mode is enforced, not suggested.** `/plan` alone is a prompt; in `plan` mode this
+  plugin also blocks the writes and commands that would contradict it.
+
+## Install
+
+From the catalog, once it is listed:
+
+```bash
+hermes plugins install readonly-guard
+hermes plugins enable readonly-guard --no-allow-tool-override
+```
+
+From this repository, before that:
+
+```bash
+hermes plugins install mciocchi/hermes-readonly-guard
+hermes plugins enable readonly-guard --no-allow-tool-override
+```
+
+`--no-allow-tool-override` is the right flag for a hook-only plugin: this one replaces no
+built-in tool, it only vetoes calls.
+
+Then start a **new session** — a running session does not pick up a newly enabled plugin.
+New sessions start at `readonly`.
+
+For the status-bar control (Desktop): Sidebar → **Capabilities → Plugins**, turn on
+*Read-only guard*, then **Rescan**, which copies `desktop/plugin.js` out of the package.
+
+Requirements: Hermes with plugin manifests at schema 2, Python 3.11 or newer, and no
+extra packages — the plugin imports only the standard library and Hermes itself. It makes
+no network calls and defines no environment variables.
+
+## The three modes
+
+| Mode | Inspection tools | Plan markdown | Single read-only probes | Everything else |
+|---|---|---|---|---|
+| `readonly` | allowed | blocked | blocked | **blocked** |
+| `plan` | allowed | allowed | allowed (allowlist) | **blocked** |
+| `writable` | allowed | allowed | allowed | allowed |
+
+- **`readonly`** is the default, and the mode you leave on when nothing may run. Thirteen
+  inspection tools stay available: `read_file`, `search_files`, `skill_view`,
+  `web_search`, `session_search`, and the rest of the list in `__init__.py`.
+- **`plan`** blocks everything `readonly` blocks, with two exceptions: the plan markdown
+  the `plan` skill writes (`.hermes/plans/*.md`, written with `write_file` or a single-file
+  `patch`), and single read-only shell commands such as `git log` or `rg`, so a plan can
+  read the workspace. Every turn in `plan` is handed Hermes' own plan prompt plus a
+  pointer to the `plan` skill.
+- **`writable`** blocks nothing.
+
+## Switching it
 
 | Surface | What it switches |
 |---|---|
-| `/readonly [status\|readonly\|plan\|writable\|on\|off\|toggle]` | the session you type it in |
-| Desktop status-bar control / palette rows | the focused chat; on a fresh draft, the default for new sessions |
-| `POST /api/plugins/readonly-guard/state {"mode": …, "session": "<id>"}` | that session (no `session` → the default) |
-| `plugins.entries.readonly-guard.settings.default_mode` | what a NEW session starts as |
+| Desktop status-bar control, or the palette rows | the focused chat; on a fresh draft, the default for new sessions |
+| `/readonly [status\|readonly\|plan\|writable\|toggle]` | the session you type it in |
+| `POST /api/plugins/readonly-guard/state` with `{"mode": "plan", "session": "<id>"}` | that session; with no `session`, the default |
+| the `default_mode` setting | what a new session starts as |
 
-## The default mode setting
+The switch is deliberately **not** an agent tool. An agent that can turn off its own guard
+has no guard. A slash command is not a tool call, which is why `/readonly` is the one
+control you can type while everything else is blocked.
+
+`/readonly status` prints the session id, the mode, and where it came from — `session`
+when the session has its own entry, `default` when it is following the setting.
+
+## The default for new sessions
 
 `default_mode` decides what a session starts as. Set it in Settings → Plugins (the form
-comes from `plugin.yaml`'s `config_schema`), by clicking the status-bar control while no
+comes from the manifest's `config_schema`), by clicking the status-bar control while no
 chat has a session yet, or by editing `config.yaml`:
 
 ```yaml
@@ -46,134 +100,106 @@ plugins:
 Changing it never touches a session that already has its own mode. An unrecognised value
 reads as `readonly`.
 
-## Design concerns
+## What it does not protect against
 
-- **One state file, every surface, one entry per session.** The agent hooks, the
-  `/readonly` command and the dashboard API all read and write the same file, so they
-  cannot disagree — and each session has its own entry, so a flip in one cannot loosen
-  another. `session_id` is the agent's durable id; `task_id` is a fresh uuid per turn and
-  is deliberately unused.
+- **It blocks tool calls, not the machine.** A command that is already running, a
+  background process, or something outside Hermes is not affected. The guard is a veto on
+  the tools Hermes is about to call, nothing more.
+- **Plan-mode probes are a speed bump, not a sandbox.** Every verdict is a string decision
+  about a command a shell will then interpret: one program per call, an allowlist of
+  programs, a per-flag policy for `git` and `find`, and composition (`;`, `&&`, `|`, `>`,
+  `<`, `$(…)`, backticks, newlines) refused rather than parsed. Anything unrecognised is
+  refused, so a useful command sometimes is too.
+- **`writable` really does block nothing**, including `terminal`, `write_file`, and
+  `delegate_task`. That is the mode you pick deliberately, not one to leave on.
 - **A subagent inherits the session that spawned it.** A delegated child has its own
-  `session_id`, but the process still names its parent, so the child runs under the
-  parent's mode. Without that, delegated work would silently run read-only under a
-  writable chat.
-- **The table is written under a lock.** Two writers in one process (the chip and
-  `/readonly`) each read the table and write it back; without the lock one of them loses
-  the other's session. Readers are safe regardless: writes are atomic (`mkstemp` +
-  `replace`).
-- **Fail closed.** `pre_tool_call` is a policy hook: a callback that raises or times
-  out blocks the tool instead of allowing it, and every unrecognised state reads as the
-  restrictive mode.
-- **Fail closed without surprising the reader.** A path that cannot be expanded or
-  resolved is a block, not an exception — a raising hook blocks the tool, but with a
-  policy-error message instead of the guard's own.
-- **No self-service.** The switch is not an agent tool. An agent that can turn off its
-  own guard has no guard.
-- **No duplicated planning prompt.** Plan mode injects
-  `agent.plan_prompt.build_plan_prompt` — the same builder `/plan` uses — then points at
-  the `plan` skill for the authoring procedure. If that import is unavailable the plugin
-  injects a short pointer to the skill instead of a copy of the prompt, so the two can
-  never drift.
-- **The plan-file exception is narrow.** Plan mode permits `write_file`, and `patch` in
-  its single-file `replace` mode, only for a `.md` path that names a `.hermes/plans`
-  directory *and* resolves inside it, so `.hermes/plans/../../../evil.md`, a symlink
-  inside `plans`, and a symlinked leaf are all refused. A symlinked `.hermes` or
-  `.hermes/plans` still works: the name refers to the directory the user pointed it at.
-  Patching is what lets a session supersede an existing plan instead of rewriting it.
-- **V4A patches are refused in plan mode, even for a plan file.** `patch`'s `mode="patch"`
-  shape can carry several file headers (and a decoy `path`), so the carve-out keys on
-  `mode="replace"` only; a model that emits V4A has to use replace mode or `write_file`.
-- **Plan mode may run probe commands, and only single ones.** `probe.py` admits one
-  program per call, chosen from a fixed table, with no shell composition at all: `;`,
-  `&&`, `|`, `>`, `<`, `$(…)`, backticks and newlines are refused outright rather than
-  parsed. `git` is limited to read-only sub-commands (`status`, `log`, `diff`, `show`,
-  `grep`, `rev-parse`, …) with `-c`/`--exec-path`/`--paginate` and output/pager flags
-  refused; `find` is limited to an allowlist of primaries (`-exec`, `-delete` and
-  `-fprint` are not on it). **This is a speed bump, not a sandbox** — every verdict is a
-  string decision about a command a shell will then interpret, so anything unrecognised
-  is refused and a useful command sometimes is too. `readonly` mode keeps `terminal`
-  blocked entirely: it is the mode you leave on when nothing may run.
-- **`todo_list` is allowlisted on purpose.** It writes per-session task state, not files
-  or remote state, and a plan is built with one.
-- **Contributions name their area with the SDK's constants, never a literal.** `'PALETTE_AREA'`
-  is not the palette — the constant's value is `'palette'` — and a literal registers
-  silently and never renders. `tests/test_desktop_contract.py` fails on any literal area
-  id; that check exists because 1.1 shipped three dead palette rows exactly this way.
-- **The active mode is a coloured pill, and only the active one.** Green `readonly`,
-  yellow `plan`, red `writable` — safe, caution, nothing-is-blocked. The colour is a
-  filled pill whose text colour is chosen for contrast (dark text on yellow), not a tint
-  of the label, because a tinted 11px amber label is unreadable on the light theme. The
-  app's `SegmentedControl` has no per-option styling hook, so the three buttons are built
-  in `desktop/plugin.js`; their colours live in one `TONES` map and
-  `tests/test_desktop_contract.py` fails if a pair drops below 4.5:1 or the exact values
-  change without the test changing with them.
+  session id, but it runs under its parent's mode; if the parent had no explicit mode, the
+  child follows the default.
+- **A plugin that fails to import registers no hook at all**, and then nothing is blocked.
+  `hermes plugins doctor` is the check that the manifest, the import, and the hook
+  registrations still line up.
+- **Old state is ignored on purpose.** A 2.x file stored one mode for the whole machine;
+  3.0 never reads that value, because inheriting it would hand a looser mode to every
+  session at once.
 
-## Project structure
+## Troubleshooting
 
-```
-readonly-guard/
-├── __init__.py             agent half: pre_tool_call guard, pre_llm_call plan
-│                           directive, /readonly command, register(ctx)
-├── state.py                the session table: get_session_mode / set_session_mode /
-│                           next_mode / blocks_writes / status — the source of truth
-├── settings.py             the one setting: default_mode (read via ctx.get_config)
-├── dashboard/
-│   ├── manifest.json       capability-page metadata
-│   └── plugin_api.py       FastAPI router at /api/plugins/readonly-guard/
-├── desktop/
-│   └── plugin.js           status-bar mode control + palette commands (ESM)
-├── tests/                  stdlib unittest, one file per concern
-└── plugin.yaml             manifest: provides_hooks, config_schema (default_mode)
-```
-
-## Running the tests
-
-The tests are stdlib `unittest` (there is no pytest in the Hermes venv). Use the Hermes
-venv — the dashboard tests import `fastapi` and `httpx`:
-
-```bash
-# from the plugin directory
-$HERMES_REPO/venv/bin/python -m unittest discover -s tests -t tests -v
-```
-
-No test is skipped. One of them (`test_the_injection_reuses_the_built_in_plan_prompt…`)
-needs `agent.plan_prompt`, which this venv can import because Hermes is installed
-editable; the fallback path that covers the other case patches the name instead, so
-both branches are exercised either way.
-
-Desktop half (a plain ESM file, so it must be checked as one):
-
-```bash
-cp desktop/plugin.js /tmp/plugin.mjs && node --check /tmp/plugin.mjs
-```
-
-## Environment variables
-
-This plugin defines **no** environment variables of its own. It reads one variable owned
-by Hermes core:
-
-| Variable | Meaning |
+| Symptom | Cause and fix |
 |---|---|
-| `HERMES_HOME` | Hermes profile directory; the mode file is `<HERMES_HOME>/readonly-guard.state`. Falls back to `~/.hermes`. |
-
-## Installing a changed desktop half
-
-The Desktop app loads **its own copy** of `desktop/plugin.js` from
-`<HERMES_HOME>/desktop-plugins/readonly-guard/`, refreshing it only when the package copy
-is newer. After editing `desktop/plugin.js`, sidebar → Capabilities → Plugins → **Rescan**
-(or restart the app), then confirm:
-
-```bash
-hermes plugins doctor readonly-guard    # no "stale copy" warning once refreshed
-```
+| No status-bar control | The Desktop half is off, or the app is running a stale copy: Capabilities → Plugins → enable *Read-only guard*, then **Rescan**. `hermes plugins doctor readonly-guard` warns about a stale copy (pass the absolute path if the bare id is not found). |
+| A mode change seems to be ignored | `/readonly status` shows the session id the guard is using. A new chat has its own entry, and a session with no entry follows `default_mode`. |
+| `/readonly` answers "no session context" | The caller had no session bound, so nothing was written — by design. Use it inside a chat. |
+| Everything is blocked right after an upgrade | 3.0 ignores 2.x's machine-wide mode. Set the mode in the session, or set `default_mode`. |
+| A command is refused by `plan` mode | Only single, allowlisted, read-only commands are admitted. Split the command, or use a session in `writable`. |
 
 ## Upgrading from 2.x
 
-2.x stored ONE mode for the whole machine in `readonly-guard.state`. 3.0 ignores that
-value: a machine-wide posture is what this release removes, and inheriting it would hand a
-looser mode to every session at once. Every session therefore starts at `default_mode`
-(`readonly` unless you changed it). The file is replaced the first time a session is
-switched, and the old value is never read.
-
-The desktop half changed shape (a per-session chip), so press **Rescan** in
+2.x stored one mode for the whole machine. 3.0 ignores that value: every session starts at
+`default_mode` (`readonly` unless you changed it), and the old file is replaced the first
+time a session is switched. The desktop half changed shape too, so press **Rescan** in
 Capabilities → Plugins after upgrading.
+
+## Uninstall
+
+```bash
+hermes plugins disable readonly-guard
+rm -rf "$HERMES_HOME/plugins/readonly-guard"
+rm -f "$HERMES_HOME/readonly-guard.state"   # per-session modes; safe to delete
+```
+
+The first line is enough to stop the guard; the rest removes the code and the state.
+
+## Development
+
+```bash
+# the full suite (stdlib unittest; there is no pytest in the Hermes venv)
+$HERMES_REPO/venv/bin/python -m unittest discover -s tests -t tests -v
+
+# the desktop half is plain ESM, so it is checked as one
+cp desktop/plugin.js /tmp/plugin.mjs && node --check /tmp/plugin.mjs
+
+# after editing desktop/plugin.js
+hermes plugins doctor readonly-guard       # no "stale copy" warning once rescanned
+```
+
+Layout:
+
+```
+readonly-guard/
+├── __init__.py            guard() on pre_tool_call, plan_directive() on pre_llm_call,
+│                          /readonly, register(ctx)
+├── state.py               the per-session table: get_session_mode / set_session_mode /
+│                          next_mode / blocks_writes / status
+├── settings.py            the one setting, read through ctx.get_config
+├── probe.py               the read-only command allowlist plan mode may use
+├── dashboard/             plugin_api.py (FastAPI router) + manifest.json
+├── desktop/plugin.js      the status-bar control and palette rows
+├── tests/                 146 stdlib unittest methods, one file per concern
+├── catalog-entry.yaml     the entry submitted to the plugin catalog
+├── plugin.yaml            manifest: hooks, config_schema, licence, homepage
+└── LICENSE                MIT
+```
+
+Design notes worth knowing before changing behaviour:
+
+- **One table, one writer, one lock.** Every surface writes the same session table, and a
+  read-modify-write runs under a lock; two writers otherwise lose one another's session.
+  Reads are safe regardless, because writes are atomic (`mkstemp` + `replace`).
+- **`session_id`, never `task_id`.** The hook receives both; `task_id` is a fresh uuid per
+  turn, so a mode keyed on it would be forgotten between turns.
+- **The plan-file exception is a containment check**, not a name test: the path must
+  resolve *inside* the `.hermes/plans` directory it names. It is also scoped to the tool
+  *shapes* that write a file, so V4A patches (which can carry several file headers) are
+  refused even when they name a plan file.
+- **Hermes' own prompt builder.** Plan mode injects `agent.plan_prompt.build_plan_prompt`,
+  the same builder `/plan` uses, so the two cannot drift.
+- **Colour is decoration; the label carries the meaning.** The active pill is coloured
+  (green `readonly`, yellow `plan`, red `writable`) and its text colour is chosen for a
+  4.5:1 contrast ratio, which `tests/test_desktop_contract.py` enforces.
+
+`tests/test_packaging.py` pins the manifest, the licence, the versions and the catalog
+entry; `tests/test_readme.py` pins this file's structure.
+
+## Licence
+
+MIT. See [LICENSE](LICENSE).
