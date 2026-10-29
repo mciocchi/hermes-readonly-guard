@@ -55,6 +55,18 @@ class TestBanner(unittest.TestCase):
         # word and the dot rather than requiring them to be adjacent text.
         self.assertRegex(html, r"writable.{0,120}·\s*\d+m")
 
+    def test_the_banner_states_what_the_writable_pill_means(self):
+        """The card is the only place a reader learns what the countdown is for.
+
+        Pinned as whole sentences, not fragments: this is the copy the owner chose, and a
+        paraphrase is a silent change to what the picture claims.
+        """
+        html = SOURCE.read_text(encoding="utf-8")
+        self.assertIn("A Hermes plugin that manages agent access on a per session basis.", html)
+        self.assertIn(
+            "After its lease expires, the session goes back to being read-only.", html
+        )
+
     def test_the_entry_pins_a_full_sha_and_the_image_that_sha_carries(self):
         """The published entry names one commit, and its image is that commit's banner.
 

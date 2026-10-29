@@ -35,8 +35,7 @@
 <body>
   <header>
     <h1>readonly-guard</h1>
-    <p class="lede">A Hermes plugin that holds an agent to a posture in code: the tool call
-      is refused before it runs, and the mode is per session.</p>
+    <p class="lede">A Hermes plugin that manages agent access on a per session basis.</p>
   </header>
 
   <div class="row">
@@ -50,7 +49,7 @@
     </div>
     <div class="cell">
       <div class="pill" style="background:#b91c1c;color:#ffffff">writable<span class="left"> · 24m</span></div>
-      <div class="note">Nothing is blocked, and the lease ends 30 minutes after your last message.</div>
+      <div class="note">Agent is granted full access for a configurable amount of time. After its lease expires, the session goes back to being read-only.</div>
     </div>
   </div>
 
