@@ -105,25 +105,25 @@ plugins:
 Changing it never touches a session that already has its own mode. An unrecognised value
 reads as `readonly`.
 
-### Resetting on startup
+### Writable expires
 
-`reset_sessions_on_startup` (off by default) rewrites every stored session to `read-only`
-when a process starts handling agent work, so a session you left in `writable` cannot
-survive a restart:
+`writable_expiry_minutes` (30 by default) puts a session back to `read-only` once you have
+been silent for that long, so a session you forgot cannot stay armed:
 
 ```yaml
 plugins:
   entries:
     readonly-guard:
       settings:
-        reset_sessions_on_startup: true   # unquoted; the string "true" reads as off
+        writable_expiry_minutes: 30   # minutes; 0 keeps writable on until you change it
 ```
 
-The sweep runs once per process, on its first tool call — not at import, so
-`hermes plugins doctor` and `plugins validate` never touch your state. "A process that
-starts handling turns" includes a CLI command, a cron job and the gateway, and the change
-can only ever tighten a session: if one of them clears a mode you set in the desktop, that
-is this setting doing its job, and the fix is a re-arm or turning it off.
+The clock starts at the beginning of each of your turns, not at each tool call, so a turn
+that is already running always finishes — silence is what expires, not work. Once the
+limit has passed the grant is gone for good: a new message does not revive it, and the mode
+has to be re-armed with `/readonly writable` or the status-bar control. The chip shows the
+time left, and `/readonly status` prints it. A session following `default_mode: writable`
+has no countdown; that setting is the explicit choice to stay on.
 
 ## What it does not protect against
 

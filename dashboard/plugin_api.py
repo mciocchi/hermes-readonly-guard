@@ -30,7 +30,7 @@ _PLUGIN_DIR = Path(__file__).resolve().parents[1]
 if str(_PLUGIN_DIR) not in sys.path:
     sys.path.insert(0, str(_PLUGIN_DIR))
 
-from settings import default_mode  # noqa: E402
+from settings import default_mode, writable_expiry_minutes  # noqa: E402
 from state import MODES, next_mode, set_session_mode, status  # noqa: E402
 
 router = APIRouter()
@@ -41,7 +41,7 @@ PLUGIN_ID = "readonly-guard"
 
 def _payload(session: str = "") -> dict:
     """The one payload shape — ``state.status`` defines it, the routes do not re-spell it."""
-    return status(str(session or ""), default=default_mode())
+    return status(str(session or ""), default=default_mode(), ttl_minutes=writable_expiry_minutes())
 
 
 def _write_setting(values: dict) -> None:
@@ -79,7 +79,7 @@ def _apply(mode: str, session: str) -> dict:
     # Echo what was written. This process may hold no config reader (the dashboard can
     # be mounted without a plugin context), and the caller needs the outcome, not a
     # default read from a stale reader.
-    return status("", default=mode)
+    return status("", default=mode, ttl_minutes=writable_expiry_minutes())
 
 
 @router.get("/state")

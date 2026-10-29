@@ -116,6 +116,10 @@ class TestSessionScope(unittest.TestCase):
         self.assertIn("?session=", SOURCE)
         self.assertIn("body = session ?", SOURCE)
 
+    def test_the_chip_reads_the_writable_countdown(self):
+        """A countdown the chip ignores is a limit the user cannot see coming."""
+        self.assertIn("expires_in", SOURCE)
+
     def test_the_draft_case_is_labelled_as_the_new_sessions_default(self):
         keys = registered_i18n_keys()
         self.assertIn("tip_draft", keys)

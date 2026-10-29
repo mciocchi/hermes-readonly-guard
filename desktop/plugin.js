@@ -144,7 +144,11 @@ function ModeControl() {
   // No response yet is a loading tick; only a failed request is a broken backend.
   const loading = !isError && mode === null
   const disabled = isError || loading
-  const tip = isError ? t('unavailable') : loading ? t('loading') : session ? t(`tip_${mode}`) : t('tip_draft')
+  // A writable grant counts down; the tooltip is the only place the chip can say when.
+  const expiresIn = data && typeof data.expires_in === 'number' ? data.expires_in : null
+  const tip = isError ? t('unavailable') : loading ? t('loading')
+    : session ? t(`tip_${mode}`) + (expiresIn === null ? '' : ` · ${Math.ceil(expiresIn / 60)} min left`)
+      : t('tip_draft')
   const labels = { readonly: t('mode_readonly'), plan: t('mode_plan'), writable: t('mode_writable') }
 
   return jsx(Tip, {

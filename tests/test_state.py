@@ -279,6 +279,22 @@ class TestWritableExpiry(StateCase):
         self.assertEqual(entry["renewed_at"], self.NOW)
         self.assertEqual(entry["renewed_turn"], "task-9")
 
+    def test_status_counts_down_and_then_lapses(self):
+        state.set_session_mode("s-w", "writable", source="test")
+        table = state._sessions()
+        table["s-w"]["renewed_at"] = state.time.time() - 10 * 60
+        state._write({"version": state.SCHEMA_VERSION, "sessions": table})
+        fresh = state.status("s-w", ttl_minutes=30)
+        self.assertEqual(fresh["mode"], "writable")
+        self.assertGreater(fresh["expires_in"], 19 * 60)
+
+        table["s-w"]["renewed_at"] = state.time.time() - 31 * 60
+        state._write({"version": state.SCHEMA_VERSION, "sessions": table})
+        lapsed = state.status("s-w", ttl_minutes=30)
+        self.assertEqual(lapsed["mode"], "readonly")
+        self.assertTrue(lapsed["blocking"])
+        self.assertIsNone(lapsed["expires_in"])
+
     def test_renewing_a_session_that_is_not_writable_does_nothing(self):
         state.set_session_mode("s-r", "readonly", source="test")
         before = state._sessions()["s-r"]

@@ -285,21 +285,24 @@ def next_mode(mode: str = MODE_READONLY) -> str:
         return DEFAULT_MODE
 
 
-def status(session_id: str = "", default: str = DEFAULT_MODE) -> dict:
+def status(session_id: str = "", default: str = DEFAULT_MODE, ttl_minutes: int = 0) -> dict:
     """The payload every surface reads: this session's mode, and what it means.
 
     ``source`` is ``"session"`` when the session has its own entry and ``"default"``
     when it is following the setting — the desktop chip labels the two differently.
+    ``ttl_minutes`` is passed by the caller (this module does not read settings), so an
+    expired grant reads as ``readonly`` here exactly as the guard decides it.
     """
     effective_default = default if default in MODES else DEFAULT_MODE
-    explicit = get_session_mode(session_id)
-    mode = explicit or effective_default
+    entry = session_entry(session_id)
+    mode = (effective_mode(entry, ttl_minutes=ttl_minutes) if entry else None) or effective_default
     return {
         "modes": list(MODES),
         "session": str(session_id),
         "mode": mode,
-        "source": "session" if explicit else "default",
+        "source": "session" if entry else "default",
         "default": effective_default,
         "blocking": blocks_writes(mode),
+        "expires_in": expires_in(entry, ttl_minutes=ttl_minutes) if mode == MODE_WRITABLE else None,
         "state_file": str(state_path()),
     }
