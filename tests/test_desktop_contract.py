@@ -128,7 +128,7 @@ def contrast(a: str, b: str) -> float:
 
 
 class TestModeColours(unittest.TestCase):
-    """The active pill's colour is the mode's identity: blue = safe, yellow = caution,
+    """The active pill's colour is the mode's identity: green = safe, yellow = caution,
     red = nothing is blocked. Decoration only, but it must stay readable."""
 
     def test_every_mode_has_a_tone(self):
@@ -147,7 +147,7 @@ class TestModeColours(unittest.TestCase):
         self.assertEqual(
             tones(),
             {
-                "readonly": ("#1d4ed8", "#ffffff"),
+                "readonly": ("#15803d", "#ffffff"),
                 "plan": ("#facc15", "#1c1917"),
                 "writable": ("#b91c1c", "#ffffff"),
             },

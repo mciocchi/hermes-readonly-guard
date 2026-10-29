@@ -13,7 +13,7 @@
  * mean. A fresh draft has no such id yet, so the chip then edits the DEFAULT that new
  * sessions start with (POST with no `session`), and says so in its tooltip.
  *
- * Colour: the ACTIVE mode is a filled pill in its own colour (blue safe, yellow
+ * Colour: the ACTIVE mode is a filled pill in its own colour (green safe, yellow
  * caution, red nothing-is-blocked); the others stay muted grey. The app's
  * SegmentedControl has no per-option hook — it hard-codes its two button states — so
  * the control is built here. Colour and fill are inline styles because plugin JS is
@@ -42,7 +42,7 @@ const KINDS = { readonly: 'success', plan: 'info', writable: 'warning' }
  * exact values so a palette change is a deliberate edit.
  */
 const TONES = {
-  readonly: { bg: '#1d4ed8', fg: '#ffffff' },
+  readonly: { bg: '#15803d', fg: '#ffffff' },
   plan: { bg: '#facc15', fg: '#1c1917' },
   writable: { bg: '#b91c1c', fg: '#ffffff' }
 }
