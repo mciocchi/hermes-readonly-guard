@@ -19,7 +19,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      # The plugin needs no dependencies; the TESTS import yaml. Hermes itself is absent
-      # on a runner, which is the point: the suite has to pass without the agent checkout.
-      - run: pip install pyyaml
+      # The plugin needs no dependencies; the TESTS import yaml and exercise the dashboard
+      # half, which imports fastapi (Hermes provides it at runtime). Hermes itself is absent
+      # on a runner, which is the point: the suite must pass without the agent checkout.
+      - run: pip install pyyaml fastapi httpx
       - run: python -m unittest discover -s tests -t tests -v

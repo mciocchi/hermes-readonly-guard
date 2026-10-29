@@ -16,8 +16,12 @@ from pathlib import Path
 from unittest import mock
 
 import yaml
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
+
+try:  # Hermes ships fastapi for its dashboard; a bare venv does not
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+except ImportError as exc:  # a module-level skip, not a loader error
+    raise unittest.SkipTest(f"the dashboard half needs fastapi (Hermes provides it): {exc}")
 
 from plugin_under_test import PLUGIN_DIR, load_submodule
 
