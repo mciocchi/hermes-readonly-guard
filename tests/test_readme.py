@@ -66,6 +66,27 @@ class TestStructure(unittest.TestCase):
         self.assertLess(TEXT.index(images[0]), TEXT.index("## Why"))
         self.assertLess(TEXT.index(images[0]), TEXT.index("A Hermes plugin"))
 
+    def test_every_declared_setting_is_mentioned(self):
+        """A setting nobody documents is a setting nobody finds.
+
+        `writable_expiry_minutes` shipped in 3.6 and the README only mentioned it inside its
+        own section; this test is what makes the next one a deliberate omission.
+        """
+        manifest = yaml.safe_load((PLUGIN_DIR / "plugin.yaml").read_text(encoding="utf-8"))
+        declared = list((manifest.get("config_schema") or {}).keys())
+        self.assertTrue(declared, "plugin.yaml declares no settings")
+        for key in declared:
+            self.assertIn(key, TEXT, f"{key} is a declared setting the README never mentions")
+
+    def test_the_writable_expiry_default_matches_the_manifest(self):
+        """The one number in the prose that can rot."""
+        manifest = yaml.safe_load((PLUGIN_DIR / "plugin.yaml").read_text(encoding="utf-8"))
+        spec = (manifest.get("config_schema") or {}).get("writable_expiry_minutes") or {}
+        declared = spec.get("default")
+        self.assertIsInstance(declared, int, "plugin.yaml declares no writable_expiry_minutes default")
+        section = TEXT.split("### Writable expires", 1)[1].split("\n## ", 1)[0]
+        self.assertIn(f"({declared} by default)", section)
+
     def test_the_readme_names_the_licence_the_manifest_declares(self):
         licence = str(yaml.safe_load((PLUGIN_DIR / "plugin.yaml").read_text(encoding="utf-8"))["license"])
         section = TEXT.split("## Licence", 1)[1]
