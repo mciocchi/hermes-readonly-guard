@@ -99,6 +99,14 @@ reads as `readonly`.
   is not the palette — the constant's value is `'palette'` — and a literal registers
   silently and never renders. `tests/test_desktop_contract.py` fails on any literal area
   id; that check exists because 1.1 shipped three dead palette rows exactly this way.
+- **The active mode is a coloured pill, and only the active one.** Blue `readonly`,
+  yellow `plan`, red `writable` — safe, caution, nothing-is-blocked. The colour is a
+  filled pill whose text colour is chosen for contrast (dark text on yellow), not a tint
+  of the label, because a tinted 11px amber label is unreadable on the light theme. The
+  app's `SegmentedControl` has no per-option styling hook, so the three buttons are built
+  in `desktop/plugin.js`; their colours live in one `TONES` map and
+  `tests/test_desktop_contract.py` fails if a pair drops below 4.5:1 or the exact values
+  change without the test changing with them.
 
 ## Project structure
 
