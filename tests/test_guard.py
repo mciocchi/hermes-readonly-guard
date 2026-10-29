@@ -512,5 +512,48 @@ class TestPerSessionModes(GuardTestCase):
         self.assertIn("this session", message)
 
 
+class TestStartupReset(GuardTestCase):
+    """The sweep runs once per process, before the first call's mode is resolved."""
+
+    def setUp(self):
+        super().setUp()
+        original = getattr(plugin, "_startup_reset_done", False)
+        self.addCleanup(setattr, plugin, "_startup_reset_done", original)
+        plugin._startup_reset_done = False
+        self.addCleanup(plugin.settings.set_reader, None)
+
+    def arm(self, enabled):
+        plugin.settings.set_reader(
+            lambda key, default: enabled if key == plugin.settings.RESET_SETTING else default
+        )
+
+    def test_the_first_call_already_sees_the_reset(self):
+        set_mode("writable", source="test")
+        self.arm(True)
+        result = self.block("write_file", {"path": "src/app.py", "content": "x"})
+        self.assertIsNotNone(result, "the reset must land before this call is decided")
+        self.assertEqual(state.get_session_mode(TEST_SESSION), "readonly")
+
+    def test_it_runs_once_per_process(self):
+        set_mode("writable", source="test")
+        self.arm(True)
+        self.assertIsNotNone(self.block("write_file", {"path": "a", "content": "x"}))
+        state.set_session_mode(TEST_SESSION, "writable", source="test")   # the user re-arms
+        self.assertIsNone(self.block("write_file", {"path": "b", "content": "x"}),
+                          "the second call must not reset again")
+
+    def test_nothing_happens_when_the_setting_is_off(self):
+        set_mode("writable", source="test")
+        self.arm(False)
+        self.assertIsNone(self.block("write_file", {"path": "a", "content": "x"}))
+        self.assertEqual(state.get_session_mode(TEST_SESSION), "writable")
+
+    def test_a_failing_reset_does_not_break_the_guard(self):
+        set_mode("writable", source="test")
+        self.arm(True)
+        with mock.patch.object(plugin, "reset_all", side_effect=OSError("read-only fs")):
+            self.assertIsNone(self.block("read_file", {"path": "README.md"}))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -21,6 +21,7 @@ off its own guard has no guard.
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
@@ -32,12 +33,13 @@ from .state import (
     blocks_writes,
     get_session_mode,
     next_mode,
+    reset_all,
     set_session_mode,
     state_path,
 )
 
 from .probe import PROBE_PROGRAMS, probe_refusal
-from .settings import default_mode, set_reader
+from .settings import default_mode, reset_on_startup, set_reader
 
 try:  # Hermes' own /plan prompt. Absent only in an interpreter without the repo on sys.path.
     from agent.plan_prompt import build_plan_prompt
@@ -215,6 +217,35 @@ def resolve_mode(session_id: str = "") -> tuple[str, str]:
     return default_mode(), "default"
 
 
+#: One startup sweep per process. The flag is set by the first hook call, not on import:
+#: ``hermes plugins doctor``, ``plugins validate`` and a bare import must never rewrite
+#: state, while a process that starts handling turns — CLI, gateway, cron — should.
+_startup_reset_done = False
+
+_log = logging.getLogger("readonly-guard")
+
+
+def _maybe_reset_on_startup() -> None:
+    """Sweep every session to read-only once per process, when the setting asks for it.
+
+    Best-effort: a failed write must not turn every tool call into an error. Sessions that
+    did not get rewritten keep what they had, and the next call resolves normally.
+    """
+    global _startup_reset_done
+    if _startup_reset_done:
+        return
+    _startup_reset_done = True
+    if not reset_on_startup():
+        return
+    try:
+        changed = reset_all(reason="startup")
+    except Exception as exc:  # noqa: BLE001 - reported, never raised into the hook
+        _log.warning("readonly-guard: startup reset failed: %s", exc)
+        return
+    if changed:
+        _log.info("readonly-guard: startup reset moved %d session(s) to read-only", changed)
+
+
 def guard(tool_name, args=None, task_id="", session_id="", **kwargs):
     """pre_tool_call directive: block anything THIS SESSION's mode does not allow.
 
@@ -222,6 +253,7 @@ def guard(tool_name, args=None, task_id="", session_id="", **kwargs):
     stored-session id carries. ``task_id`` is deliberately unused: it is a fresh uuid
     per turn, so keying on it would forget the mode between turns.
     """
+    _maybe_reset_on_startup()
     mode, _source = resolve_mode(session_id)
     if not blocks_writes(mode):
         return None
@@ -256,6 +288,7 @@ def _plan_context(user_message=None) -> str:
 
 def plan_directive(user_message=None, session_id="", **kwargs):
     """pre_llm_call directive: in a PLAN session, hand this turn to the plan skill."""
+    _maybe_reset_on_startup()
     if resolve_mode(session_id)[0] != MODE_PLAN:
         return None
     return {"context": _plan_context(user_message)}
