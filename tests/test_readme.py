@@ -28,9 +28,7 @@ SECTIONS = [
     "## The default for new sessions",
     "## What it does not protect against",
     "## Troubleshooting",
-    "## Upgrading from 2.x",
     "## Uninstall",
-    "## Development",
     "## Licence",
 ]
 
