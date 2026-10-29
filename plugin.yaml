@@ -1,6 +1,6 @@
 name: readonly-guard
 version: "3.6"
-description: Per-session code-enforced posture with three modes — readonly, plan, writable — switched by /readonly, the dashboard API, or the desktop chip; new sessions start at the configurable default.
+description: Per-session code-enforced posture with three modes — readonly, plan, writable — switched by /readonly, the dashboard API, or the desktop chip; new sessions start at the configurable default, and a writable session returns to readonly after 30 minutes without a message (configurable, 0 disables).
 author: mciocchi
 license: MIT
 homepage: https://github.com/mciocchi/hermes-readonly-guard/
