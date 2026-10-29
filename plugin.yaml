@@ -22,15 +22,6 @@ config_schema:
       The guard's posture for a session that has never been switched. Read-only is the
       restrictive default; plan asks for a plan instead of executing; writable blocks
       nothing. Changing this never touches a session that already has its own setting.
-  reset_sessions_on_startup:
-    type: bool
-    default: false
-    label: Set all sessions to read-only on startup
-    description: >-
-      When a process that handles agent work starts, rewrite every stored session to
-      read-only, so a session left armed in writable mode does not survive a restart. Off
-      by default. Any process that starts handling turns counts as a startup — a CLI
-      command, a cron job, or the gateway — and the change can only ever tighten.
   writable_expiry_minutes:
     type: int
     default: 30

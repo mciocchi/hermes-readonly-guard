@@ -272,31 +272,6 @@ def set_session_mode(session_id: str, mode: str, source: str = "unknown") -> dic
     return payload
 
 
-def reset_all(reason: str = "startup") -> int:
-    """Set EVERY stored session to ``readonly`` in one write. Returns how many changed.
-
-    Entries are rewritten, not removed: an empty table means "no session has a mode", and
-    every session would then follow ``default_mode`` — which a user may have set to
-    writable, so dropping the table could loosen exactly the sessions this exists to
-    tighten. A table that is already all read-only is not rewritten, so a restart costs no
-    writes and the stored timestamps keep their meaning.
-    """
-    with _WRITE_LOCK:
-        table = dict(_sessions())
-        if not table:
-            return 0
-        now = time.time()
-        changed = 0
-        for sid, entry in table.items():
-            if entry.get("mode") != MODE_READONLY:
-                changed += 1
-            table[sid] = {"mode": MODE_READONLY, "updated_at": now, "updated_by": reason}
-        if changed == 0:
-            return 0
-        _write({"version": SCHEMA_VERSION, "sessions": table})
-    return changed
-
-
 def blocks_writes(mode: str | None = None) -> bool:
     """True while the guard is restricting tool calls (readonly or plan)."""
     return (mode or MODE_READONLY) != MODE_WRITABLE

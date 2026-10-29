@@ -512,47 +512,60 @@ class TestPerSessionModes(GuardTestCase):
         self.assertIn("this session", message)
 
 
-class TestStartupReset(GuardTestCase):
-    """The sweep runs once per process, before the first call's mode is resolved."""
+class TestWritableClock(GuardTestCase):
+    """Turn start renews or lapses; the guard never cuts the turn that renewed it."""
 
     def setUp(self):
         super().setUp()
-        original = getattr(plugin, "_startup_reset_done", False)
-        self.addCleanup(setattr, plugin, "_startup_reset_done", original)
-        plugin._startup_reset_done = False
         self.addCleanup(plugin.settings.set_reader, None)
-
-    def arm(self, enabled):
         plugin.settings.set_reader(
-            lambda key, default: enabled if key == plugin.settings.RESET_SETTING else default
+            lambda key, default: 30 if key == plugin.settings.EXPIRY_SETTING else default
         )
 
-    def test_the_first_call_already_sees_the_reset(self):
+    def turn(self, task_id="task-1"):
+        return plugin.turn_start(user_message="go", session_id=TEST_SESSION, task_id=task_id)
+
+    def block_as(self, task_id, path="a"):
+        return plugin.guard("write_file", {"path": path, "content": "x"}, task_id=task_id)
+
+    def age(self, minutes):
+        table = state._sessions()
+        table[TEST_SESSION]["renewed_at"] = state.time.time() - minutes * 60
+        state._write({"version": state.SCHEMA_VERSION, "sessions": table})
+
+    def test_a_turn_renews_the_clock(self):
         set_mode("writable", source="test")
-        self.arm(True)
-        result = self.block("write_file", {"path": "src/app.py", "content": "x"})
-        self.assertIsNotNone(result, "the reset must land before this call is decided")
+        self.turn("task-1")
+        self.assertEqual(state._sessions()[TEST_SESSION]["renewed_turn"], "task-1")
+
+    def test_silence_past_the_ttl_latches_readonly(self):
+        set_mode("writable", source="test")
+        self.turn("task-1")
+        self.age(31)
+        self.turn("task-2")
         self.assertEqual(state.get_session_mode(TEST_SESSION), "readonly")
 
-    def test_it_runs_once_per_process(self):
+    def test_the_turn_that_renewed_it_keeps_running(self):
         set_mode("writable", source="test")
-        self.arm(True)
-        self.assertIsNotNone(self.block("write_file", {"path": "a", "content": "x"}))
-        state.set_session_mode(TEST_SESSION, "writable", source="test")   # the user re-arms
-        self.assertIsNone(self.block("write_file", {"path": "b", "content": "x"}),
-                          "the second call must not reset again")
+        self.turn("task-1")
+        self.age(90)
+        self.assertIsNone(self.block_as("task-1"))
 
-    def test_nothing_happens_when_the_setting_is_off(self):
+    def test_a_lapsed_grant_does_not_revive_on_the_next_message(self):
         set_mode("writable", source="test")
-        self.arm(False)
-        self.assertIsNone(self.block("write_file", {"path": "a", "content": "x"}))
-        self.assertEqual(state.get_session_mode(TEST_SESSION), "writable")
+        self.turn("task-1")
+        self.age(31)
+        self.turn("task-2")                      # the user speaks again
+        self.assertIsNotNone(self.block_as("task-2"))
 
-    def test_a_failing_reset_does_not_break_the_guard(self):
+    def test_zero_disables_the_clock(self):
+        plugin.settings.set_reader(
+            lambda key, default: 0 if key == plugin.settings.EXPIRY_SETTING else default
+        )
         set_mode("writable", source="test")
-        self.arm(True)
-        with mock.patch.object(plugin, "reset_all", side_effect=OSError("read-only fs")):
-            self.assertIsNone(self.block("read_file", {"path": "README.md"}))
+        self.turn("task-1")
+        self.age(10_000)
+        self.assertIsNone(self.block_as("task-1"))
 
 
 if __name__ == "__main__":

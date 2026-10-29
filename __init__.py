@@ -32,14 +32,16 @@ from .state import (
     MODES,
     blocks_writes,
     get_session_mode,
+    effective_mode,
     next_mode,
-    reset_all,
+    renew_or_lapse,
+    session_entry,
     set_session_mode,
     state_path,
 )
 
 from .probe import PROBE_PROGRAMS, probe_refusal
-from .settings import default_mode, reset_on_startup, set_reader
+from .settings import default_mode, set_reader, writable_expiry_minutes
 
 try:  # Hermes' own /plan prompt. Absent only in an interpreter without the repo on sys.path.
     from agent.plan_prompt import build_plan_prompt
@@ -198,52 +200,47 @@ def current_session_id() -> str:
     return str(value or os.environ.get("HERMES_SESSION_ID", "") or "")
 
 
-def resolve_mode(session_id: str = "") -> tuple[str, str]:
-    """``(mode, source)`` for one tool call.
+def resolve_mode(session_id: str = "", task_id: str = "") -> tuple[str, str]:
+    """``(mode, source)`` for one tool call or turn, with the writable clock applied.
 
     Three steps, most specific first: this session's own entry, then the entry of the
     session that spawned this one (a subagent inherits its parent's posture — otherwise
     delegated work would silently run read-only under a writable chat), then the plugin
-    setting. The last step is the restrictive one when the setting is unset or invalid.
+    setting. The expiry lives HERE, not in each caller, so the guard, the plan directive
+    and ``/readonly status`` cannot disagree about whether a grant has lapsed.
     """
-    explicit = get_session_mode(session_id)
-    if explicit:
-        return explicit, "session"
+    ttl = writable_expiry_minutes()
+    entry = session_entry(session_id)
+    if entry:
+        return effective_mode(entry, ttl_minutes=ttl, turn_id=task_id) or default_mode(), "session"
     parent = current_session_id()
     if parent and parent != session_id:
-        inherited = get_session_mode(parent)
+        inherited = session_entry(parent)
         if inherited:
-            return inherited, "parent"
+            return effective_mode(inherited, ttl_minutes=ttl, turn_id=task_id) or default_mode(), "parent"
     return default_mode(), "default"
 
-
-#: One startup sweep per process. The flag is set by the first hook call, not on import:
-#: ``hermes plugins doctor``, ``plugins validate`` and a bare import must never rewrite
-#: state, while a process that starts handling turns — CLI, gateway, cron — should.
-_startup_reset_done = False
 
 _log = logging.getLogger("readonly-guard")
 
 
-def _maybe_reset_on_startup() -> None:
-    """Sweep every session to read-only once per process, when the setting asks for it.
+def turn_start(user_message=None, session_id="", task_id="", **kwargs):
+    """pre_llm_call: renew this session's writable clock, or latch it to readonly.
 
-    Best-effort: a failed write must not turn every tool call into an error. Sessions that
-    did not get rewritten keep what they had, and the next call resolves normally.
+    Runs once per turn, before any tool call in it, which is why the guard can treat the
+    stamped turn id as "already running — do not cut it off".
     """
-    global _startup_reset_done
-    if _startup_reset_done:
-        return
-    _startup_reset_done = True
-    if not reset_on_startup():
-        return
+    ttl = writable_expiry_minutes()
+    if ttl <= 0:
+        return None
+    sid = session_id or current_session_id()
+    if not sid:
+        return None
     try:
-        changed = reset_all(reason="startup")
-    except Exception as exc:  # noqa: BLE001 - reported, never raised into the hook
-        _log.warning("readonly-guard: startup reset failed: %s", exc)
-        return
-    if changed:
-        _log.info("readonly-guard: startup reset moved %d session(s) to read-only", changed)
+        renew_or_lapse(sid, task_id, ttl)
+    except Exception as exc:  # noqa: BLE001 - never fail a turn on housekeeping
+        _log.warning("readonly-guard: writable clock: %s", exc)
+    return None
 
 
 def guard(tool_name, args=None, task_id="", session_id="", **kwargs):
@@ -253,8 +250,7 @@ def guard(tool_name, args=None, task_id="", session_id="", **kwargs):
     stored-session id carries. ``task_id`` is deliberately unused: it is a fresh uuid
     per turn, so keying on it would forget the mode between turns.
     """
-    _maybe_reset_on_startup()
-    mode, _source = resolve_mode(session_id)
+    mode, _source = resolve_mode(session_id, task_id)
     if not blocks_writes(mode):
         return None
     if tool_name in READ_ONLY_TOOLS:
@@ -286,10 +282,9 @@ def _plan_context(user_message=None) -> str:
         return _PLAN_FALLBACK_CONTEXT
 
 
-def plan_directive(user_message=None, session_id="", **kwargs):
+def plan_directive(user_message=None, session_id="", task_id="", **kwargs):
     """pre_llm_call directive: in a PLAN session, hand this turn to the plan skill."""
-    _maybe_reset_on_startup()
-    if resolve_mode(session_id)[0] != MODE_PLAN:
+    if resolve_mode(session_id, task_id)[0] != MODE_PLAN:
         return None
     return {"context": _plan_context(user_message)}
 
@@ -311,10 +306,12 @@ def _handle_readonly(raw_args: str) -> str:
         )
     if arg in ("", "status"):
         mode, source = resolve_mode(sid)
+        ttl = writable_expiry_minutes()
+        expiry = "never" if ttl == 0 else f"{ttl} min after your last message"
         return (
             f"readonly-guard: {mode} for this session (from {source}) — {_MODE_BLURB[mode]}\n"
             f"default for new sessions: {default_mode()}\n"
-            f"set all sessions to read-only on startup: {'on' if reset_on_startup() else 'off'}\n"
+            f"writable expires: {expiry}\n"
             f"modes: {', '.join(MODES)}\n"
             f"session: {sid}\n"
             f"state file: {state_path()}\n"
@@ -336,6 +333,7 @@ def _handle_readonly(raw_args: str) -> str:
 def register(ctx):
     set_reader(ctx.get_config)
     ctx.register_hook("pre_tool_call", guard)
+    ctx.register_hook("pre_llm_call", turn_start)
     ctx.register_hook("pre_llm_call", plan_directive)
     ctx.register_command(
         "readonly",
