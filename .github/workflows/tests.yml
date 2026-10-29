@@ -1,0 +1,25 @@
+name: tests
+
+on:
+  push:
+    branches: [main, windows-compatibility]
+  pull_request:
+
+jobs:
+  unittest:
+    name: ${{ matrix.os }} / py${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      # The plugin needs no dependencies; the TESTS import yaml. Hermes itself is absent
+      # on a runner, which is the point: the suite has to pass without the agent checkout.
+      - run: pip install pyyaml
+      - run: python -m unittest discover -s tests -t tests -v
