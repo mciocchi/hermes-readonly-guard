@@ -24,7 +24,7 @@ ENTRY = PLUGIN_DIR / "catalog-entry.yaml"
 
 
 def read_manifest() -> dict:
-    return yaml.safe_load(MANIFEST.read_text()) or {}
+    return yaml.safe_load(MANIFEST.read_text(encoding="utf-8")) or {}
 
 
 class FakeContext:
@@ -54,7 +54,7 @@ class TestLicenceAndUrl(unittest.TestCase):
         )
 
     def test_the_licence_file_is_mit_for_the_copyright_holder(self):
-        text = (PLUGIN_DIR / "LICENSE").read_text()
+        text = (PLUGIN_DIR / "LICENSE").read_text(encoding="utf-8")
         self.assertIn("MIT License", text)
         self.assertIn("Copyright (c) 2026 Matt Ciocchi", text)
         self.assertIn("Permission is hereby granted, free of charge", text)
@@ -84,8 +84,8 @@ class TestVersionsAgree(unittest.TestCase):
         dashboard or the catalog entry still fails, which is the tripwire that matters.
         """
         manifest_version = str(read_manifest().get("version"))
-        dashboard_version = str(json.loads(DASHBOARD.read_text())["version"])
-        entry_version = str(yaml.safe_load(ENTRY.read_text())["version"])
+        dashboard_version = str(json.loads(DASHBOARD.read_text(encoding="utf-8"))["version"])
+        entry_version = str(yaml.safe_load(ENTRY.read_text(encoding="utf-8"))["version"])
         self.assertEqual(
             {dashboard_version, entry_version},
             {manifest_version},
@@ -97,7 +97,7 @@ class TestCatalogEntry(unittest.TestCase):
     """Rule 6 of the catalog: declared capabilities must match what is registered."""
 
     def setUp(self):
-        self.entry = yaml.safe_load(ENTRY.read_text())
+        self.entry = yaml.safe_load(ENTRY.read_text(encoding="utf-8"))
         ctx = FakeContext()
         plugin.register(ctx)
         self.registered_hooks = set(ctx.hooks)
@@ -149,7 +149,7 @@ class TestNoMachineSpecificPaths(unittest.TestCase):
                 continue
             if path.suffix.lower() not in TEXT_SUFFIXES:
                 continue
-            if HOME_PATH_RE.search(path.read_text(errors="ignore")):
+            if HOME_PATH_RE.search(path.read_text(encoding="utf-8", errors="ignore")):
                 offenders.append(str(path.relative_to(PLUGIN_DIR)))
         self.assertEqual(offenders, [])
 
@@ -159,7 +159,7 @@ class TestIgnoreRules(unittest.TestCase):
     machine that ran the tests."""
 
     def setUp(self):
-        self.ignore = (PLUGIN_DIR / ".gitignore").read_text().splitlines()
+        self.ignore = (PLUGIN_DIR / ".gitignore").read_text(encoding="utf-8").splitlines()
 
     def test_bytecode_is_ignored(self):
         self.assertIn("__pycache__/", self.ignore)

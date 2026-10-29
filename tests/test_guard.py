@@ -277,7 +277,7 @@ class TestPlan(GuardTestCase):
             work = Path(tmp) / "work"
             outside = Path(tmp) / "outside.md"
             (work / ".hermes" / "plans").mkdir(parents=True)
-            outside.write_text("not a plan\n")
+            outside.write_text("not a plan\n", encoding="utf-8")
             (work / ".hermes" / "plans" / "plan.md").symlink_to(outside)
             original = Path.cwd()
             try:

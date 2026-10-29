@@ -61,7 +61,7 @@ class ApiCase(unittest.TestCase):
         path = Path(self._home.name) / "config.yaml"
         if not path.is_file():
             return None
-        data = yaml.safe_load(path.read_text()) or {}
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         entry = ((data.get("plugins") or {}).get("entries") or {}).get("readonly-guard") or {}
         return (entry.get("settings") or {}).get("default_mode")
 

@@ -23,4 +23,20 @@ jobs:
       # half, which imports fastapi (Hermes provides it at runtime). Hermes itself is absent
       # on a runner, which is the point: the suite must pass without the agent checkout.
       - run: pip install pyyaml fastapi httpx
-      - run: python -m unittest discover -s tests -t tests -v
+      # Annotations, not just a red X: without an authenticated API token the log is
+      # unreadable, and "which test failed on Windows" is the only question this job
+      # exists to answer.
+      - name: run the suite
+        shell: bash
+        run: |
+          set +e
+          python -m unittest discover -s tests -t tests -v 2>&1 | tee test-output.txt
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            grep -E "^(FAIL|ERROR):" test-output.txt | head -20 | while IFS= read -r line; do
+              echo "::error::${line}"
+            done
+            echo "--- last 40 lines ---"
+            tail -40 test-output.txt
+          fi
+          exit "$status"

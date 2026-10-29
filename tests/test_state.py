@@ -29,7 +29,7 @@ class StateCase(unittest.TestCase):
         self.addCleanup(patcher.stop)
 
     def write_raw(self, text: str) -> None:
-        Path(self._home.name, state.STATE_FILENAME).write_text(text)
+        Path(self._home.name, state.STATE_FILENAME).write_text(text, encoding="utf-8")
 
 
 class TestSessionTable(StateCase):

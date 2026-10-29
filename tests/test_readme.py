@@ -16,7 +16,7 @@ import yaml
 from plugin_under_test import PLUGIN_DIR
 
 README = PLUGIN_DIR / "README.md"
-TEXT = README.read_text()
+TEXT = README.read_text(encoding="utf-8")
 
 #: Reader-facing sections, in the order a first-time visitor needs them.
 SECTIONS = [
@@ -48,14 +48,14 @@ class TestStructure(unittest.TestCase):
     def test_the_install_section_names_the_repository_and_the_plugin(self):
         """The install command is the one thing a reader copies. It has to name the repo
         the catalog entry points at, and the plugin id that `enable` takes."""
-        entry = yaml.safe_load((PLUGIN_DIR / "catalog-entry.yaml").read_text())
+        entry = yaml.safe_load((PLUGIN_DIR / "catalog-entry.yaml").read_text(encoding="utf-8"))
         repo = str(entry["repo"]).rstrip("/").removeprefix("https://github.com/")
         install = TEXT.split("## Install", 1)[1].split("\n## ", 1)[0]
         self.assertIn(f"hermes plugins install {repo}", install)
         self.assertIn("hermes plugins enable readonly-guard", install)
 
     def test_the_readme_names_the_licence_the_manifest_declares(self):
-        licence = str(yaml.safe_load((PLUGIN_DIR / "plugin.yaml").read_text())["license"])
+        licence = str(yaml.safe_load((PLUGIN_DIR / "plugin.yaml").read_text(encoding="utf-8"))["license"])
         section = TEXT.split("## Licence", 1)[1]
         self.assertIn(licence, section)
         self.assertIn("LICENSE", section)
