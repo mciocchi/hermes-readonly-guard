@@ -13,13 +13,20 @@
  * mean. A fresh draft has no such id yet, so the chip then edits the DEFAULT that new
  * sessions start with (POST with no `session`), and says so in its tooltip.
  *
+ * Colour: the ACTIVE mode is a filled pill in its own colour (blue safe, yellow
+ * caution, red nothing-is-blocked); the others stay muted grey. The app's
+ * SegmentedControl has no per-option hook — it hard-codes its two button states — so
+ * the control is built here. Colour and fill are inline styles because plugin JS is
+ * not scanned by Tailwind (only classes the app itself uses exist in the built CSS,
+ * which is why the two hover classes below are borrowed from SegmentedControl).
+ *
  * Contributions MUST name their area with the SDK's constants. A literal — even one
  * spelled exactly like the constant, e.g. 'PALETTE_AREA' rather than PALETTE_AREA
  * (whose value is 'palette') — registers fine and never renders, which is how 1.1
  * shipped three dead palette rows.
  */
 
-import { haptic, host, PALETTE_AREA, queryClient, SegmentedControl, STATUSBAR_AREAS, Tip, usePluginI18n, useQuery, useValue } from '@hermes/plugin-sdk'
+import { haptic, host, PALETTE_AREA, queryClient, STATUSBAR_AREAS, Tip, usePluginI18n, useQuery, useValue } from '@hermes/plugin-sdk'
 import { jsx } from 'react/jsx-runtime'
 
 const ID = 'readonly-guard'
@@ -27,6 +34,18 @@ const ID = 'readonly-guard'
 const MODES = ['readonly', 'plan', 'writable']
 /** Notification severity: tightening the guard is good news, loosening it is not. */
 const KINDS = { readonly: 'success', plan: 'info', writable: 'warning' }
+
+/**
+ * The active pill's colours, one pair per mode. `fg` is picked for contrast, not
+ * taste: white on yellow is unreadable, which is why `plan` carries dark text.
+ * `tests/test_desktop_contract.py` fails if a pair drops below 4.5:1, and pins the
+ * exact values so a palette change is a deliberate edit.
+ */
+const TONES = {
+  readonly: { bg: '#1d4ed8', fg: '#ffffff' },
+  plan: { bg: '#facc15', fg: '#1c1917' },
+  writable: { bg: '#b91c1c', fg: '#ffffff' }
+}
 
 // Bound in register(ctx): ctx.rest is the only door to our own backend.
 let api = null
@@ -55,6 +74,62 @@ async function setMode(mode, session = scopeNow()) {
   return next
 }
 
+/** One segment. `aria-pressed` carries the selection; only the selected one is filled. */
+function ModeButton({ id, label, active, disabled, onSelect }) {
+  const tone = TONES[id]
+
+  return jsx('button', {
+    'aria-pressed': active,
+    disabled,
+    onClick: () => {
+      if (!disabled) {
+        onSelect(id)
+      }
+    },
+    className: active ? undefined : 'text-muted-foreground hover:text-foreground',
+    style: {
+      background: active ? tone.bg : 'transparent',
+      border: 'none',
+      borderRadius: 3,
+      boxShadow: active ? '0 1px 2px rgb(0 0 0 / 0.25)' : 'none',
+      color: active ? tone.fg : undefined,
+      cursor: disabled ? 'default' : 'pointer',
+      font: 'inherit',
+      fontSize: '0.6875rem',
+      fontWeight: 500,
+      lineHeight: 1.45,
+      padding: '2px 10px',
+      transition: 'background-color 120ms ease, color 120ms ease',
+      whiteSpace: 'nowrap'
+    },
+    type: 'button',
+    children: label
+  })
+}
+
+function ModeSwitch({ modes, mode, disabled, onSelect, labels }) {
+  return jsx('div', {
+    // The track keeps the app's own look from variables that already exist.
+    style: {
+      background: 'var(--ui-bg-tertiary)',
+      borderRadius: 5,
+      display: 'inline-flex',
+      gap: 2,
+      padding: 2
+    },
+    children: modes.map(id =>
+      jsx(ModeButton, {
+        active: id === mode,
+        disabled,
+        id,
+        key: id,
+        label: labels[id],
+        onSelect
+      })
+    )
+  })
+}
+
 function ModeControl() {
   const t = usePluginI18n(ID)
   const session = useScope()
@@ -70,24 +145,16 @@ function ModeControl() {
   const loading = !isError && mode === null
   const disabled = isError || loading
   const tip = isError ? t('unavailable') : loading ? t('loading') : session ? t(`tip_${mode}`) : t('tip_draft')
+  const labels = { readonly: t('mode_readonly'), plan: t('mode_plan'), writable: t('mode_writable') }
 
   return jsx(Tip, {
     label: tip,
     // The wrapper is load-bearing: Tip arms its tooltip with `asChild`, which clones
-    // the child to hand it the trigger's props and ref — SegmentedControl spreads
-    // neither, so wrapping it directly would leave the tooltip unable to open.
+    // the child to hand it the trigger's props and ref — a bare track would work, but
+    // keeping one wrapper element makes the Tip contract independent of what renders.
     children: jsx('span', {
       className: 'inline-flex h-full items-center',
-      children: jsx(SegmentedControl, {
-        disabled,
-        onChange: next => {
-          if (!disabled && next !== mode) {
-            setMode(next, session)
-          }
-        },
-        options: modes.map(id => ({ id, label: t(`mode_${id}`) })),
-        value: mode || MODES[0]
-      })
+      children: jsx(ModeSwitch, { disabled, labels, mode, modes, onSelect: next => setMode(next, session) })
     })
   })
 }

@@ -101,5 +101,69 @@ class TestSessionScope(unittest.TestCase):
         self.assertIn("NEW sessions", SOURCE)
 
 
+#: The mode id -> fill/text pairs, as they appear in desktop/plugin.js.
+TONES_RE = re.compile(r"(\w+): *\{ *bg: *'(#[0-9a-fA-F]{6})', *fg: *'(#[0-9a-fA-F]{6})' *\}")
+
+
+def tones() -> dict[str, tuple[str, str]]:
+    """{mode: (bg, fg)} from the plugin's TONES map."""
+    return {m.group(1): (m.group(2), m.group(3)) for m in TONES_RE.finditer(SOURCE)}
+
+
+def _luminance(colour: str) -> float:
+    """WCAG relative luminance of a '#rrggbb' string."""
+    channels = [int(colour[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+
+    def linear(c: float) -> float:
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+
+    r, g, b = (linear(c) for c in channels)
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def contrast(a: str, b: str) -> float:
+    """WCAG contrast ratio between two '#rrggbb' colours."""
+    high, low = sorted((_luminance(a), _luminance(b)), reverse=True)
+    return (high + 0.05) / (low + 0.05)
+
+
+class TestModeColours(unittest.TestCase):
+    """The active pill's colour is the mode's identity: blue = safe, yellow = caution,
+    red = nothing is blocked. Decoration only, but it must stay readable."""
+
+    def test_every_mode_has_a_tone(self):
+        self.assertEqual(set(tones()), set(MODE_IDS))
+
+    def test_the_tone_text_is_readable_on_its_fill(self):
+        for mode, (bg, fg) in tones().items():
+            ratio = contrast(fg, bg)
+            self.assertGreaterEqual(
+                round(ratio, 2), 4.5, f"{mode}: {fg} on {bg} is only {ratio:.2f}:1"
+            )
+
+    def test_the_agreed_colours_are_the_ones_shipped(self):
+        # Pinned on purpose: a palette tweak should be a deliberate edit here too, and a
+        # contrast-only test would happily accept three shades of grey.
+        self.assertEqual(
+            tones(),
+            {
+                "readonly": ("#1d4ed8", "#ffffff"),
+                "plan": ("#facc15", "#1c1917"),
+                "writable": ("#b91c1c", "#ffffff"),
+            },
+        )
+
+    def test_the_fill_is_gated_on_the_active_button(self):
+        """A pill on the wrong button is the whole bug this change could introduce."""
+        match = SDK_IMPORT_RE.search(SOURCE)
+        imported = [n.strip().split(" as ")[0].strip() for n in match.group(1).split(",") if n.strip()]
+        self.assertNotIn(
+            "SegmentedControl", imported,
+            "SegmentedControl has no per-option colour hook; using it silently drops the colours",
+        )
+        self.assertIn("'aria-pressed': active", SOURCE)
+        self.assertIn("background: active ?", SOURCE)
+
+
 if __name__ == "__main__":
     unittest.main()
