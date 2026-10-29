@@ -1,0 +1,61 @@
+<!doctype html>
+<!--
+  Source for docs/banner.png - the catalog card image (2:1, e.g. 1200x600).
+  Rendered headless from this file at 1200x600 and captured at scale 2 (2400x1200);
+  the pills use the same fills as desktop/plugin.js's TONES map, and
+  tests/test_banner.py fails if they drift.
+
+  This is an illustration, not a screenshot: the real control fills ONE segment of a
+  three-segment track, and those pictures belong in the entry's `screenshots:`.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; width: 1200px; height: 600px; }
+  body {
+    background: #141416;
+    color: #f4f4f5;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "DejaVu Sans", sans-serif;
+    display: flex; flex-direction: column; justify-content: space-between;
+    padding: 64px; box-sizing: border-box;
+  }
+  header { display: flex; flex-direction: column; gap: 14px; }
+  h1 { margin: 0; font-size: 46px; font-weight: 650; letter-spacing: -0.02em; }
+  .lede { margin: 0; font-size: 21px; line-height: 1.45; color: #a1a1aa; max-width: 940px; }
+  .row { display: flex; gap: 26px; }
+  .cell { flex: 1; display: flex; flex-direction: column; gap: 12px; }
+  .pill { border-radius: 10px; padding: 18px 0; text-align: center; font-size: 22px; font-weight: 600; }
+  .note { font-size: 15px; line-height: 1.4; color: #a1a1aa; }
+  footer { display: flex; justify-content: space-between; font-size: 15px; color: #71717a; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>readonly-guard</h1>
+    <p class="lede">A Hermes plugin that holds an agent to a posture in code: the tool call
+      is refused before it runs, and the mode is per session.</p>
+  </header>
+
+  <div class="row">
+    <div class="cell">
+      <div class="pill" style="background:#15803d;color:#ffffff">read-only</div>
+      <div class="note">Inspection tools only. Nothing is written, executed, or sent.</div>
+    </div>
+    <div class="cell">
+      <div class="pill" style="background:#facc15;color:#1c1917">plan</div>
+      <div class="note">Inspection, the plan markdown, and single read-only probes.</div>
+    </div>
+    <div class="cell">
+      <div class="pill" style="background:#b91c1c;color:#ffffff">writable</div>
+      <div class="note">Nothing is blocked. Chosen deliberately, never left on.</div>
+    </div>
+  </div>
+
+  <footer>
+    <span>one control per session &middot; <code>/readonly</code> or the status bar</span>
+    <span>MIT</span>
+  </footer>
+</body>
+</html>
