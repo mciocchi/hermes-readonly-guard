@@ -304,5 +304,6 @@ def status(session_id: str = "", default: str = DEFAULT_MODE, ttl_minutes: int =
         "default": effective_default,
         "blocking": blocks_writes(mode),
         "expires_in": expires_in(entry, ttl_minutes=ttl_minutes) if mode == MODE_WRITABLE else None,
+        "expiry_minutes": int(ttl_minutes),
         "state_file": str(state_path()),
     }

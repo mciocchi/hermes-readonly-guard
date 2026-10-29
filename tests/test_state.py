@@ -295,6 +295,13 @@ class TestWritableExpiry(StateCase):
         self.assertTrue(lapsed["blocking"])
         self.assertIsNone(lapsed["expires_in"])
 
+    def test_status_publishes_the_configured_expiry(self):
+        """The chip has to tell "the feature is off" from "not writable right now"."""
+        state.set_session_mode("s-w", "writable", source="test")
+        self.assertEqual(state.status("s-w", ttl_minutes=30)["expiry_minutes"], 30)
+        self.assertEqual(state.status("s-w", ttl_minutes=0)["expiry_minutes"], 0)
+        self.assertIsNone(state.status("s-w", ttl_minutes=0)["expires_in"])
+
     def test_renewing_a_session_that_is_not_writable_does_nothing(self):
         state.set_session_mode("s-r", "readonly", source="test")
         before = state._sessions()["s-r"]
