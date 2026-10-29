@@ -2,10 +2,11 @@
 
 ![readonly-guard: one session, three modes — read-only, plan, and writable with its lease counting down](./docs/banner.png)
 
-A Hermes plugin that holds an agent to a posture **in code**, not in a prompt. While
-`readonly` or `plan` is active, every tool call that is not on a small inspection
-allowlist — or a single, allowlisted, read-only command — is refused before it runs, and
-the refusal happens in `pre_tool_call`, ahead of the approval layer — so `--yolo` and `approvals.mode: off` do not lift it.
+A Hermes plugin that manages agent access **in code**, per session: while `readonly` or
+`plan` is active, every tool call that is not on a small inspection allowlist — or a single,
+allowlisted, read-only command — is refused before it runs, and the refusal happens in
+`pre_tool_call`, ahead of the approval layer, so `--yolo` and `approvals.mode: off` do not
+lift it.
 
 The mode is **per session**. Turning the guard off to do one edit cannot turn it off under
 another chat that is already running, which is the failure a machine-wide switch
@@ -19,6 +20,9 @@ Published as **`hermes-readonly-guard`**; it installs and registers as **`readon
   `--yolo`, still cannot call `write_file` in `readonly`: the hook vetos the call.
 - **One switch per session.** Each session has its own entry in one small table, so
   loosening one chat leaves the others exactly where they were.
+- **Writable is a lease, not a switch.** A writable session returns to `readonly` on its own
+  after thirty minutes without a message from you, so the dangerous mode is the one you have
+  to keep choosing.
 - **Plan mode is enforced, not suggested.** `/plan` alone is a prompt; in `plan` mode this
   plugin also blocks the writes and commands that would contradict it.
 
@@ -72,7 +76,10 @@ not part of Git Bash, so those probes answer "command not found" until you insta
 - **`plan`** is `readonly` plus one thing: the plan markdown the `plan` skill writes
   (`.hermes/plans/*.md`, written with `write_file` or a single-file `patch`). Every turn
   in `plan` is handed Hermes' own plan prompt plus a pointer to the `plan` skill.
-- **`writable`** blocks nothing.
+- **`writable`** blocks nothing, and does not stay on by itself: a writable session returns
+  to `readonly` after thirty minutes without a message from you (`writable_expiry_minutes`;
+  `0` turns the limit off). The status-bar control counts down on the pill —
+  `writable · 24m`, then `<1m` — and `/readonly status` prints the expiry too.
 
 ## Switching it
 
@@ -87,8 +94,11 @@ The switch is deliberately **not** an agent tool. An agent that can turn off its
 has no guard. A slash command is not a tool call, which is why `/readonly` is the one
 control you can type while everything else is blocked.
 
-`/readonly status` prints the session id, the mode, and where it came from — `session`
-when the session has its own entry, `default` when it is following the setting.
+`/readonly status` prints the mode this session is actually under, where it came from —
+`session` when the session has its own entry, `default` when it follows the setting — the
+default for new sessions, the writable expiry when that setting is on, the session id, and
+the path of the state file. A lapsed lease shows as `readonly` here, because that is what the
+guard will enforce.
 
 ## The default for new sessions
 
@@ -123,9 +133,11 @@ plugins:
 The clock starts at the beginning of each of your turns, not at each tool call, so a turn
 that is already running always finishes — silence is what expires, not work. Once the
 limit has passed the grant is gone for good: a new message does not revive it, and the mode
-has to be re-armed with `/readonly writable` or the status-bar control. The chip shows the
-time left, and `/readonly status` prints it. A session following `default_mode: writable`
-has no countdown; that setting is the explicit choice to stay on.
+has to be re-armed with `/readonly writable` or the status-bar control. The status-bar
+control counts down on the pill itself — `writable · 24m`, then `<1m` for the last minute —
+and `/readonly status` prints the expiry next to the mode. The pill keeps a fixed width
+across those states, so nothing moves as the number changes. A session following
+`default_mode: writable` has no countdown; that setting is the explicit choice to stay on.
 
 ## What it does not protect against
 
@@ -140,7 +152,9 @@ has no countdown; that setting is the explicit choice to stay on.
 - **A probe can read anything you can read** — `cat ~/.ssh/id_rsa` is admitted, exactly as
   `read_file` already is. This guard is about writes and execution, not confidentiality.
 - **`writable` really does block nothing**, including `terminal`, `write_file`, and
-  `delegate_task`. That is the mode you pick deliberately, not one to leave on.
+  `delegate_task` — its only limit is the lease, and that bounds *silence*, not work: a turn
+  already running always finishes. `default_mode: writable` has no lease at all, which is why
+  that is the setting to leave alone.
 - **A subagent inherits the session that spawned it.** A delegated child has its own
   session id, but it runs under its parent's mode; if the parent had no explicit mode, the
   child follows the default.
@@ -161,6 +175,7 @@ has no countdown; that setting is the explicit choice to stay on.
 | Everything is blocked right after an upgrade | 3.0 ignores 2.x's machine-wide mode. Set the mode in the session, or set `default_mode`.                                                                                                                                                               |
 | A probe says "command not found" on Windows | Git Bash ships the coreutils the probe list assumes, but not `file`, `tree`, `column`, `jq`, or `rg`. Install the program, or use `read_file` and `search_files`. |
 | A command is refused by `readonly` or `plan` | Only single, allowlisted, read-only commands are admitted. Split the command, or use a session in `writable`.                                                                                                                                          |
+| `writable` switched itself off            | The lease expired: `writable_expiry_minutes` (30 by default) ends a writable session after that many minutes without a message. Re-arm with `/readonly writable`, or set the setting to `0`. |
 
 ## Uninstall
 
