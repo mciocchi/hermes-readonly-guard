@@ -250,5 +250,30 @@ class TestProcessShape(ProbeTestCase):
         self.assertIsNotNone(probe.probe_refusal({"command": ["git", "log"]}))
 
 
+class TestWriteAndExecFlags(ProbeTestCase):
+    """Programs on the reader list that can still write a file or run a program.
+
+    Both are admitted by the tables as written. They are not theoretical: `file -C`
+    writes a compiled magic file into the working directory, and `git cat-file
+    --textconv` runs whatever `.gitattributes` names, exactly as `git log --textconv`
+    does — which `log`, `diff`, and `show` already refuse. Read-only mode is about to
+    admit these programs too, so the table has to be honest before the mode does.
+    """
+
+    def test_file_cannot_compile_a_magic_file(self):
+        for command in ("file -C -m magic", "file --compile -m magic", "file -C"):
+            self.assertRefused(command)
+
+    def test_git_cannot_run_a_filter_or_textconv_driver(self):
+        for command in ("git cat-file --filters HEAD:README.md",
+                        "git cat-file --textconv HEAD:README.md"):
+            self.assertRefused(command)
+
+    def test_reading_a_file_or_a_blob_still_works(self):
+        for command in ("file README.md", "file -b README.md",
+                        "git cat-file -p HEAD", "git cat-file -s HEAD:README.md"):
+            self.assertAllowed(command)
+
+
 if __name__ == "__main__":
     unittest.main()

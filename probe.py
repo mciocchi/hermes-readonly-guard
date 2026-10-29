@@ -32,7 +32,7 @@ READERS: dict[str, frozenset[str]] = {
     "head": frozenset(),
     "tail": frozenset({"-f", "--follow", "-F", "--retry"}),      # follow = never returns
     "wc": frozenset(),
-    "file": frozenset(),
+    "file": frozenset({"-C", "--compile"}),                          # -C compiles a magic file
     "stat": frozenset(),
     "pwd": frozenset(),
     "tree": frozenset({"-o"}),                                    # -o writes a file
@@ -79,7 +79,7 @@ GIT_READERS: dict[str, frozenset[str]] = {
     "rev-parse": frozenset(),
     "ls-files": frozenset(),
     "ls-tree": frozenset(),
-    "cat-file": frozenset(),
+    "cat-file": frozenset({"--filters", "--textconv"}),              # both run a driver
     "describe": frozenset(),
     "for-each-ref": frozenset(),
     "show-ref": frozenset(),
