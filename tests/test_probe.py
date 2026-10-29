@@ -275,5 +275,24 @@ class TestWriteAndExecFlags(ProbeTestCase):
             self.assertAllowed(command)
 
 
+class TestProgramAllowlist(unittest.TestCase):
+    """The program list is the security boundary of the mode people leave on.
+
+    A golden list on purpose: adding a program widens what `readonly` may execute, so
+    the addition has to be a deliberate edit here as well as in the table. Flags are
+    covered by the targeted refusals above; this covers the set.
+    """
+
+    EXPECTED = sorted({
+        "cat", "column", "cut", "df", "diff", "du", "file", "find", "git", "grep",
+        "head", "id", "jq", "ls", "nl", "ps", "pwd", "readlink", "realpath", "rg",
+        "sort", "stat", "tail", "tr", "tree", "uname", "wc", "which", "whoami",
+    })
+
+    def test_the_probe_programs_are_exactly_the_audited_set(self):
+        self.assertEqual(sorted(probe.PROBE_PROGRAMS), self.EXPECTED)
+        self.assertEqual(len(self.EXPECTED), 29)
+
+
 if __name__ == "__main__":
     unittest.main()
