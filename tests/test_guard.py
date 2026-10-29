@@ -303,11 +303,19 @@ class TestPlan(GuardTestCase):
             self.assertEqual(result["action"], "block", tool)
 
     def test_plan_blocks_a_path_that_cannot_be_expanded_instead_of_raising(self):
-        """`~<unknown-user>/...` makes `Path.expanduser()` raise.
+        """`~<unknown-user>/...` makes `Path.expanduser()` raise — on POSIX.
 
         A raising pre_tool_call still fails closed, but with a policy-error message
-        instead of the plan block — and the file it points at is not a plan file.
+        instead of the plan block. ``ntpath.expanduser`` leaves an unknown ``~user``
+        alone instead of raising, so on Windows there is no exception to guard against
+        and the path is just a plans directory under the cwd — nothing to assert here.
         """
+        try:
+            Path("~nosuchuser-9f3a1c").expanduser()
+        except (RuntimeError, KeyError):
+            pass
+        else:
+            self.skipTest("this host's expanduser leaves an unknown ~user alone; nothing raises")
         set_mode("plan", source="test")
         result = self.block(
             "write_file", {"path": "~nosuchuser-9f3a1c/.hermes/plans/x.md", "content": "x"}
