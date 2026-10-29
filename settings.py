@@ -32,6 +32,22 @@ def set_reader(reader: Callable[[str, Any], Any] | None) -> None:
     _reader = reader
 
 
+#: The opt-in startup sweep. Same reader seam as ``default_mode``; declared in
+#: ``plugin.yaml`` so Hermes validates and renders it.
+RESET_SETTING = "reset_sessions_on_startup"
+
+
+def reset_on_startup() -> bool:
+    """True only when the setting is the literal boolean true.
+
+    Deliberately strict: a quoted ``"true"``, a ``1``, or any other truthy value reads as
+    off. The setting costs a user their armed modes when it fires, so it fires only on a
+    value that could not have been meant as anything else — and the default is off.
+    """
+    raw = _reader(RESET_SETTING, False) if _reader is not None else False
+    return raw is True
+
+
 def default_mode() -> str:
     """The configured default mode. Anything that is not one of the three modes reads
     as :data:`DEFAULT_MODE`, so a typo in ``config.yaml`` tightens rather than loosens."""
