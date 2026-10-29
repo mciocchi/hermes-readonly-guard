@@ -14,7 +14,7 @@
 # `tests/test_banner.py` fails until both move together.
 name: readonly-guard
 repo: https://github.com/mciocchi/hermes-readonly-guard
-sha: "80b58608000413064be6e91b9bb3df0067b2069b"
+sha: "d2b6317e6bf67f35bb0bbd98c3e508595cfea36b"
 subdir: ""
 description: >-
   Three-mode, per-session tool guard: read-only, plan (inspection only, plus the plan
@@ -30,7 +30,7 @@ maintainer: mciocchi
 tier: community
 category: desktop
 docs_url: https://github.com/mciocchi/hermes-readonly-guard
-image: "https://raw.githubusercontent.com/mciocchi/hermes-readonly-guard/80b58608000413064be6e91b9bb3df0067b2069b/docs/banner.png"
+image: "https://raw.githubusercontent.com/mciocchi/hermes-readonly-guard/d2b6317e6bf67f35bb0bbd98c3e508595cfea36b/docs/banner.png"
 version: "3.5"
 platforms: [linux, macos, windows]
 capabilities:
