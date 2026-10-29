@@ -31,3 +31,12 @@ config_schema:
       read-only, so a session left armed in writable mode does not survive a restart. Off
       by default. Any process that starts handling turns counts as a startup — a CLI
       command, a cron job, or the gateway — and the change can only ever tighten.
+  writable_expiry_minutes:
+    type: int
+    default: 30
+    label: Writable mode expires N minutes after the user's last message
+    description: >-
+      A session in writable mode goes back to read-only once you have been silent for this
+      many minutes, so a forgotten session cannot stay armed. The clock starts at the
+      beginning of each of your turns, and a turn already running is never interrupted.
+      Set 0 to let writable stay on until you change it.

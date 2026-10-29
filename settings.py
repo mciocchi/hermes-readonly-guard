@@ -48,6 +48,20 @@ def reset_on_startup() -> bool:
     return raw is True
 
 
+#: How long a writable grant survives the user's silence. 0 disables, and anything that
+#: is not a non-negative int reads as the default: a typo must not quietly remove a limit.
+EXPIRY_SETTING = "writable_expiry_minutes"
+DEFAULT_EXPIRY_MINUTES = 30
+
+
+def writable_expiry_minutes() -> int:
+    """The configured TTL in minutes; ``30`` when unset, and ``0`` means never."""
+    raw = _reader(EXPIRY_SETTING, DEFAULT_EXPIRY_MINUTES) if _reader is not None else DEFAULT_EXPIRY_MINUTES
+    if isinstance(raw, bool) or not isinstance(raw, int) or raw < 0:
+        return DEFAULT_EXPIRY_MINUTES
+    return raw
+
+
 def default_mode() -> str:
     """The configured default mode. Anything that is not one of the three modes reads
     as :data:`DEFAULT_MODE`, so a typo in ``config.yaml`` tightens rather than loosens."""

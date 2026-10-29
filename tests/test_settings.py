@@ -92,5 +92,42 @@ class TestResetOnStartup(unittest.TestCase):
         self.assertEqual(settings.RESET_SETTING, "reset_sessions_on_startup")
 
 
+class TestWritableExpirySetting(unittest.TestCase):
+    def tearDown(self):
+        settings.set_reader(None)
+
+    def test_without_a_reader_it_is_thirty_minutes(self):
+        self.assertEqual(settings.writable_expiry_minutes(), 30)
+
+    def test_a_declared_integer_wins(self):
+        settings.set_reader(lambda key, default: 5)
+        self.assertEqual(settings.writable_expiry_minutes(), 5)
+
+    def test_zero_disables_it(self):
+        settings.set_reader(lambda key, default: 0)
+        self.assertEqual(settings.writable_expiry_minutes(), 0)
+
+    def test_garbage_reads_as_thirty(self):
+        for value in ("soon", -5, None, 3.5, True):
+            settings.set_reader(lambda key, default, value=value: value)
+            self.assertEqual(settings.writable_expiry_minutes(), 30, repr(value))
+
+    def test_the_reader_is_asked_for_this_key(self):
+        seen = []
+        settings.set_reader(lambda key, default: seen.append(key) or 30)
+        settings.writable_expiry_minutes()
+        self.assertEqual(seen, [settings.EXPIRY_SETTING])
+        self.assertEqual(settings.EXPIRY_SETTING, "writable_expiry_minutes")
+
+    def test_the_manifest_declares_it(self):
+        import yaml
+
+        manifest = yaml.safe_load((PLUGIN_DIR / "plugin.yaml").read_text(encoding="utf-8"))
+        spec = (manifest.get("config_schema") or {}).get("writable_expiry_minutes")
+        self.assertIsInstance(spec, dict, "plugin.yaml has no config_schema.writable_expiry_minutes")
+        self.assertEqual(str(spec.get("type")), "int")
+        self.assertEqual(spec.get("default"), 30)
+
+
 if __name__ == "__main__":
     unittest.main()
