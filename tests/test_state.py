@@ -145,5 +145,32 @@ class TestStatus(StateCase):
         self.assertFalse(payload["blocking"])
 
 
+def _raising(*_args, **_kwargs):
+    """A resolver that fails, for the fallback path."""
+    raise RuntimeError("resolver unavailable")
+
+
+class TestHomeResolver(StateCase):
+    """The state file must land in HERMES's home, never in an assumed ``~/.hermes``.
+
+    ``%LOCALAPPDATA%/hermes`` is the Windows default, and a profile or a session override
+    moves the home on every platform. Hardcoding the POSIX path writes the mode somewhere
+    nobody reads, which looks exactly like the switch doing nothing.
+    """
+
+    def test_the_state_file_follows_hermes_own_resolver(self):
+        home = Path(self._home.name) / "localappdata"
+        with mock.patch.object(state, "_hermes_home_resolver", lambda: home):
+            self.assertEqual(state.state_path(), home / state.STATE_FILENAME)
+
+    def test_a_resolver_that_raises_falls_back_to_HERMES_HOME(self):
+        with mock.patch.object(state, "_hermes_home_resolver", _raising):
+            self.assertEqual(state.state_path(), Path(self._home.name) / state.STATE_FILENAME)
+
+    def test_a_missing_resolver_falls_back_to_HERMES_HOME(self):
+        with mock.patch.object(state, "_hermes_home_resolver", None):
+            self.assertEqual(state.state_path(), Path(self._home.name) / state.STATE_FILENAME)
+
+
 if __name__ == "__main__":
     unittest.main()

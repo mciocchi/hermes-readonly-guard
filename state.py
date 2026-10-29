@@ -26,6 +26,11 @@ import threading
 import time
 from pathlib import Path
 
+try:  # Hermes' authoritative home: %LOCALAPPDATA% on Windows, profiles, session overrides
+    from hermes_constants import get_hermes_home as _hermes_home_resolver
+except Exception:  # standalone import (the dashboard half) or no Hermes on sys.path
+    _hermes_home_resolver = None
+
 MODE_READONLY = "readonly"
 MODE_PLAN = "plan"
 MODE_WRITABLE = "writable"
@@ -54,9 +59,25 @@ SESSION_CAP = 200
 _WRITE_LOCK = threading.Lock()
 
 
+def _hermes_home() -> str:
+    """Hermes' home directory, or the best available guess when it cannot be asked.
+
+    The state file has to live where Hermes is actually running, which is not always
+    ``~/.hermes``: Windows uses ``%LOCALAPPDATA%/hermes``, a profile moves it, and a
+    session can carry its own override. Asking the resolver is the only way to follow all
+    three; the fallback keeps a bare interpreter (a dashboard half imported without
+    Hermes, a unit test) working.
+    """
+    if _hermes_home_resolver is not None:
+        try:
+            return str(_hermes_home_resolver())
+        except Exception:
+            pass
+    return os.environ.get("HERMES_HOME") or str(Path.home() / ".hermes")
+
+
 def state_path() -> Path:
-    home = os.environ.get("HERMES_HOME") or str(Path.home() / ".hermes")
-    return Path(home) / STATE_FILENAME
+    return Path(_hermes_home()) / STATE_FILENAME
 
 
 def _read_raw() -> dict:
