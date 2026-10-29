@@ -5,8 +5,9 @@ Three modes, defined in ``state.py``: ``readonly``, ``plan``, ``writable``.
 Two contributions:
 
 1. ``pre_tool_call`` hook: blocks every tool call that is not on the inspection
-   allowlist whenever the mode restricts (``readonly`` or ``plan``). Plan mode also
-   admits single read-only shell commands through ``terminal`` (``probe.py``).
+   allowlist whenever the mode restricts (``readonly`` or ``plan``). Both modes also
+   admit single read-only shell commands through ``terminal`` (``probe.py``); ``plan``
+   additionally admits the plan markdown.
    A directive/control hook, so the ``block`` return short-circuits the tool
    before the approval layer — ``--yolo`` and ``approvals.mode: off`` cannot
    lift it. A callback that raises or times out fails CLOSED.
@@ -85,11 +86,14 @@ PLAN_SUFFIX = ".md"
 
 _READONLY_MESSAGE = (
     "BLOCKED: this session is in read-only mode (readonly-guard). "
-    "Only inspection tools are available: {allowed}. "
-    "Nothing may be written, executed, sent, or scheduled. Do not retry or "
+    "Available: inspection tools ({allowed}), and single read-only commands through "
+    "terminal ({probes}). Nothing is written, sent, or scheduled. Do not retry or "
     "rephrase — report what you found in the conversation instead. "
     "The user can leave read-only mode with /readonly writable — that affects only this session."
-).format(allowed=", ".join(sorted(READ_ONLY_TOOLS)))
+).format(
+    allowed=", ".join(sorted(READ_ONLY_TOOLS)),
+    probes=", ".join(sorted(PROBE_PROGRAMS)),
+)
 
 _PLAN_MESSAGE = (
     "BLOCKED: this session is in PLAN mode (readonly-guard). "
@@ -110,7 +114,7 @@ _USAGE = "usage: /readonly [status|readonly|plan|writable|on|off|toggle]"
 _ALIASES = {"on": MODE_READONLY, "off": MODE_WRITABLE}
 
 _MODE_BLURB = {
-    MODE_READONLY: "ON (read-only) — every non-inspection tool call is blocked.",
+    MODE_READONLY: "ON (read-only) — writes are blocked; inspection tools and single read-only commands run.",
     MODE_PLAN: "PLAN — inspection tools and the plan markdown only; every turn is planned, not executed.",
     MODE_WRITABLE: "OFF (writes allowed) — nothing is blocked.",
 }
@@ -225,11 +229,12 @@ def guard(tool_name, args=None, task_id="", session_id="", **kwargs):
         return None
     if mode == MODE_PLAN and _is_plan_edit(tool_name, args):
         return None
-    if mode == MODE_PLAN and tool_name == "terminal":
+    if tool_name == "terminal":
         refusal = probe_refusal(args)
         if refusal is None:
             return None
-        return {"action": "block", "message": f"{_PLAN_MESSAGE} Refused: {refusal}."}
+        template = _PLAN_MESSAGE if mode == MODE_PLAN else _READONLY_MESSAGE
+        return {"action": "block", "message": f"{template} Refused: {refusal}."}
     return {"action": "block", "message": _PLAN_MESSAGE if mode == MODE_PLAN else _READONLY_MESSAGE}
 
 

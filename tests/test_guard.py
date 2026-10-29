@@ -72,6 +72,85 @@ class TestReadonly(GuardTestCase):
         self.assertEqual(result["action"], "block")
 
 
+class TestReadonlyProbes(GuardTestCase):
+    """Read-only admits the same single commands as plan — and nothing more."""
+
+    def test_readonly_allows_a_single_read_only_command(self):
+        set_mode("readonly", source="test")
+        for command in ("ls -la", "git status --porcelain", "git log --oneline -3",
+                        "wc -l README.md", "rg -n TODO tests"):
+            self.assertIsNone(self.block("terminal", {"command": command}), command)
+
+    def test_readonly_refuses_composition_writes_and_unknown_programs(self):
+        set_mode("readonly", source="test")
+        for command in ("ls; rm -rf build", "ls && rm -rf build", "ls > out.txt",
+                        "cat < /etc/passwd", "rm -rf build", "sudo ls",
+                        "git commit -m x", "git log --output=log.txt"):
+            result = self.block("terminal", {"command": command})
+            self.assertIsNotNone(result, command)
+            self.assertEqual(result["action"], "block", command)
+            self.assertIn("read-only mode", result["message"], command)
+
+    def test_readonly_refusal_gives_the_specific_reason(self):
+        set_mode("readonly", source="test")
+        message = self.block("terminal", {"command": "git commit -m x"})["message"]
+        self.assertIn("Refused:", message)
+        self.assertIn("terminal", message)          # the message names what it DOES allow
+
+    def test_readonly_still_blocks_plan_files_code_and_delegation(self):
+        set_mode("readonly", source="test")
+        for tool, args in (
+            ("write_file", {"path": ".hermes/plans/x.md", "content": "x"}),
+            ("patch", {"path": ".hermes/plans/x.md", "old_string": "a", "new_string": "b"}),
+            ("execute_code", {"code": "print(1)"}),
+            ("delegate_task", {"goal": "x"}),
+            ("terminal", {"command": "ls", "background": True}),
+        ):
+            result = self.block(tool, args)
+            self.assertIsNotNone(result, (tool, args))
+            self.assertEqual(result["action"], "block", (tool, args))
+
+
+class TestModeOrdering(GuardTestCase):
+    """readonly says nothing plan allows, and plan says nothing writable refuses.
+
+    Stated as one property so a later change cannot quietly make the stricter mode
+    admit more than the looser one — which is the shape of bug the plan-markdown
+    carve-out could have been.
+    """
+
+    CALLS = (
+        [("terminal", {"command": command}) for command in
+         ("ls", "git status", "ls; id", "rm -rf build", "git log --output=x.txt")]
+        + [(tool, {"path": ".hermes/plans/x.md", "command": "ls", "content": "x"})
+           for tool in sorted(plugin.READ_ONLY_TOOLS | set(NEVER_IN_PLAN) | {"execute_code"})]
+    )
+
+    def test_readonly_admits_nothing_that_plan_refuses(self):
+        for tool, args in self.CALLS:
+            if plugin._is_plan_edit(tool, args):
+                continue  # the one documented difference; the next test pins it
+            set_mode("plan", source="test")
+            plan_verdict = self.block(tool, args)
+            set_mode("readonly", source="test")
+            readonly_verdict = self.block(tool, args)
+            if plan_verdict is None:
+                self.assertIsNone(readonly_verdict, f"readonly refused what plan allows: {tool} {args}")
+
+    def test_the_plan_markdown_is_the_only_thing_readonly_refuses(self):
+        """readonly == plan minus the plan file. If a second difference appears, this fails."""
+        self.assertTrue(plugin._is_plan_edit("write_file", {"path": ".hermes/plans/x.md"}))
+        set_mode("plan", source="test")
+        self.assertIsNone(self.block("write_file", {"path": ".hermes/plans/x.md", "content": "x"}))
+        set_mode("readonly", source="test")
+        self.assertIsNotNone(self.block("write_file", {"path": ".hermes/plans/x.md", "content": "x"}))
+
+    def test_writable_refuses_nothing(self):
+        set_mode("writable", source="test")
+        for tool, args in self.CALLS:
+            self.assertIsNone(self.block(tool, args), (tool, args))
+
+
 class TestPlan(GuardTestCase):
     def test_plan_allows_every_allowlisted_tool(self):
         set_mode("plan", source="test")
@@ -253,19 +332,24 @@ class TestLiveSwitch(GuardTestCase):
 
 
 class TestPlanProbes(GuardTestCase):
-    """Plan mode may read the repo through `terminal`; readonly mode still may not."""
+    """Both restricting modes may read the repo through `terminal`, on the same allowlist."""
 
     def test_plan_allows_a_probe_command(self):
         set_mode("plan", source="test")
         for command in ("git log --oneline -5", "ls", "rg 'def guard' .", "find . -name '*.py'"):
             self.assertIsNone(self.block("terminal", {"command": command}), command)
 
-    def test_readonly_blocks_the_same_probe(self):
+    def test_readonly_allows_the_same_probe(self):
         set_mode("readonly", source="test")
-        result = self.block("terminal", {"command": "git log --oneline -5"})
-        self.assertIsNotNone(result)
-        self.assertEqual(result["action"], "block")
-        self.assertIn("read-only mode", result["message"])
+        self.assertIsNone(self.block("terminal", {"command": "git log --oneline -5"}))
+
+    def test_readonly_blocks_a_probe_that_is_not_read_only(self):
+        set_mode("readonly", source="test")
+        for command in ("rm -rf /tmp/x", "git commit -m x", "git log; rm -rf /",
+                        "git log > out.txt", "find . -delete"):
+            result = self.block("terminal", {"command": command})
+            self.assertIsNotNone(result, command)
+            self.assertEqual(result["action"], "block", command)
 
     def test_plan_blocks_a_probe_that_is_not_read_only(self):
         set_mode("plan", source="test")
@@ -346,7 +430,10 @@ class TestPerSessionModes(GuardTestCase):
         plugin.settings.set_reader(lambda key, default: mode)
 
     def block_for(self, session_id, tool="terminal", args=None):
-        return plugin.guard(tool, args or {"command": "ls"}, task_id="t", session_id=session_id)
+        # A non-probe command on purpose: these tests are about WHICH session decides,
+        # not about probe policy, so the fixture must be one every restricting mode
+        # refuses regardless of how the probe table evolves.
+        return plugin.guard(tool, args or {"command": "rm -rf build"}, task_id="t", session_id=session_id)
 
     def test_a_writable_session_does_not_unblock_a_readonly_session(self):
         self.set_default("readonly")
@@ -387,7 +474,7 @@ class TestPerSessionModes(GuardTestCase):
 
     def test_the_block_message_says_the_switch_is_this_session(self):
         self.set_default("readonly")
-        message = plugin.guard("terminal", {"command": "ls"}, task_id="t", session_id="s")["message"]
+        message = plugin.guard("terminal", {"command": "rm -rf build"}, task_id="t", session_id="s")["message"]
         self.assertIn("this session", message)
 
 
