@@ -20,7 +20,7 @@ TEXT = README.read_text()
 
 #: Reader-facing sections, in the order a first-time visitor needs them.
 SECTIONS = [
-    "# readonly-guard",
+    "# hermes-readonly-guard",
     "## Why",
     "## Install",
     "## The three modes",

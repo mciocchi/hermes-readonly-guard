@@ -1,4 +1,4 @@
-# readonly-guard
+# hermes-readonly-guard
 
 A Hermes plugin that holds an agent to a posture **in code**, not in a prompt. While
 `readonly` or `plan` is active, every tool call that is not on a small inspection
