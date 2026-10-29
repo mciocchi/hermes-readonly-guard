@@ -43,6 +43,18 @@ class TestBanner(unittest.TestCase):
             self.assertIn(bg, html, f"{mode}'s fill {bg} is missing from the banner")
             self.assertIn(fg, html, f"{mode}'s text colour {fg} is missing from the banner")
 
+    def test_the_banner_shows_the_writable_lease(self):
+        """The card is the first thing a user sees; it must show the mode as it now is.
+
+        The chip renders `writable · 24m`, so the illustration copies that shape — the
+        middle dot, a space, digits, `m` — rather than a bare `writable` that describes a
+        version of the control that no longer exists.
+        """
+        html = SOURCE.read_text(encoding="utf-8")
+        # The countdown lives in a span of its own, so allow a little markup between the
+        # word and the dot rather than requiring them to be adjacent text.
+        self.assertRegex(html, r"writable.{0,120}·\s*\d+m")
+
     def test_the_entry_pins_a_full_sha_and_the_image_that_sha_carries(self):
         """The published entry names one commit, and its image is that commit's banner.
 
