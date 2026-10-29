@@ -32,6 +32,10 @@ jobs:
           set +e
           python -m unittest discover -s tests -t tests -v 2>&1 | tee test-output.txt
           status=${PIPESTATUS[0]}
+          # A public annotation, so "how many tests ran, and how many skipped" is
+          # readable without a token — a green tick alone cannot tell this job from one
+          # that skipped everything.
+          echo "::notice::$(grep -E '^Ran [0-9]+ tests' test-output.txt | tail -1) $(grep -E '^OK|^FAILED' test-output.txt | tail -1)"
           if [ "$status" -ne 0 ]; then
             grep -E "^(FAIL|ERROR):" test-output.txt | head -20 | while IFS= read -r line; do
               echo "::error::${line}"
