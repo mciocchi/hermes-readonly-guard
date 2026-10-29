@@ -34,6 +34,29 @@ NEVER_IN_PLAN = ("terminal", "patch", "skill_manage", "delegate_task", "memory",
 PLAN_PATH_ARGS = {"path": ".hermes/plans/x.md", "command": "ls -la .hermes/plans", "content": "x"}
 
 
+def symlinks_are_allowed() -> bool:
+    """True when this host can create a directory symlink.
+
+    Windows needs Developer Mode or admin, and a CI runner has neither, so the capability
+    is asked for rather than assumed from ``sys.platform``: a Windows box with Developer
+    Mode still exercises these tests, and a locked-down one skips them with a reason.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        target, link = Path(tmp) / "target", Path(tmp) / "link"
+        target.mkdir()
+        try:
+            link.symlink_to(target, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            return False
+    return True
+
+
+#: Applied to the three tests that need a symlink to exist at all.
+NEEDS_SYMLINKS = unittest.skipUnless(
+    symlinks_are_allowed(), "this host cannot create symlinks (Windows without Developer Mode)"
+)
+
+
 class GuardTestCase(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -199,6 +222,7 @@ class TestPlan(GuardTestCase):
             self.assertIsNotNone(result, path)
             self.assertEqual(result["action"], "block", path)
 
+    @NEEDS_SYMLINKS
     def test_plan_allows_a_plan_file_reached_through_a_symlinked_plans_directory(self):
         """A symlinked `.hermes` is the user naming the plans directory by another route.
 
@@ -221,6 +245,7 @@ class TestPlan(GuardTestCase):
             finally:
                 os.chdir(original)
 
+    @NEEDS_SYMLINKS
     def test_plan_blocks_a_plan_path_that_leaves_through_a_symlink_inside_plans(self):
         """A link *inside* `.hermes/plans` points out of the tree, so the write is not a plan.
 
@@ -244,6 +269,7 @@ class TestPlan(GuardTestCase):
             finally:
                 os.chdir(original)
 
+    @NEEDS_SYMLINKS
     def test_plan_blocks_a_plan_path_whose_leaf_is_a_symlink(self):
         """Writing through a symlinked leaf lands the content wherever the link points."""
         set_mode("plan", source="test")
