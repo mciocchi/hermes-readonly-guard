@@ -51,11 +51,11 @@ no network calls and defines no environment variables.
 
 ## The three modes
 
-| Mode | Inspection tools | Plan markdown | Single read-only probes | Everything else |
-|---|---|---|---|---|
-| `readonly` | allowed | blocked | blocked | **blocked** |
-| `plan` | allowed | allowed | allowed (allowlist) | **blocked** |
-| `writable` | allowed | allowed | allowed | allowed |
+| Mode       | Inspection tools | Plan markdown | Single read-only probes | Everything else |
+|------------|------------------|---------------|-------------------------|-----------------|
+| `readonly` | allowed          | blocked       | blocked                 | **blocked**     |
+| `plan`     | allowed          | allowed       | allowed (allowlist)     | **blocked**     |
+| `writable` | allowed          | allowed       | allowed                 | allowed         |
 
 - **`readonly`** is the default, and the mode you leave on when nothing may run. Thirteen
   inspection tools stay available: `read_file`, `search_files`, `skill_view`,
@@ -69,12 +69,12 @@ no network calls and defines no environment variables.
 
 ## Switching it
 
-| Surface | What it switches |
-|---|---|
-| Desktop status-bar control, or the palette rows | the focused chat; on a fresh draft, the default for new sessions |
-| `/readonly [status\|readonly\|plan\|writable\|toggle]` | the session you type it in |
-| `POST /api/plugins/readonly-guard/state` with `{"mode": "plan", "session": "<id>"}` | that session; with no `session`, the default |
-| the `default_mode` setting | what a new session starts as |
+| Surface                                                                             | What it switches                                                 |
+|-------------------------------------------------------------------------------------|------------------------------------------------------------------|
+| Desktop status-bar control, or the palette rows                                     | the focused chat; on a fresh draft, the default for new sessions |
+| `/readonly [status\|readonly\|plan\|writable\|toggle]`                              | the session you type it in                                       |
+| `POST /api/plugins/readonly-guard/state` with `{"mode": "plan", "session": "<id>"}` | that session; with no `session`, the default                     |
+| the `default_mode` setting                                                          | what a new session starts as                                     |
 
 The switch is deliberately **not** an agent tool. An agent that can turn off its own guard
 has no guard. A slash command is not a tool call, which is why `/readonly` is the one
@@ -124,20 +124,13 @@ reads as `readonly`.
 
 ## Troubleshooting
 
-| Symptom | Cause and fix |
-|---|---|
-| No status-bar control | The Desktop half is off, or the app is running a stale copy: Capabilities → Plugins → enable *Read-only guard*, then **Rescan**. `hermes plugins doctor readonly-guard` warns about a stale copy (pass the absolute path if the bare id is not found). |
-| A mode change seems to be ignored | `/readonly status` shows the session id the guard is using. A new chat has its own entry, and a session with no entry follows `default_mode`. |
-| `/readonly` answers "no session context" | The caller had no session bound, so nothing was written — by design. Use it inside a chat. |
-| Everything is blocked right after an upgrade | 3.0 ignores 2.x's machine-wide mode. Set the mode in the session, or set `default_mode`. |
-| A command is refused by `plan` mode | Only single, allowlisted, read-only commands are admitted. Split the command, or use a session in `writable`. |
-
-## Upgrading from 2.x
-
-2.x stored one mode for the whole machine. 3.0 ignores that value: every session starts at
-`default_mode` (`readonly` unless you changed it), and the old file is replaced the first
-time a session is switched. The desktop half changed shape too, so press **Rescan** in
-Capabilities → Plugins after upgrading.
+| Symptom                                      | Cause and fix                                                                                                                                                                                                                                          |
+|----------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| No status-bar control                        | The Desktop half is off, or the app is running a stale copy: Capabilities → Plugins → enable *Read-only guard*, then **Rescan**. `hermes plugins doctor readonly-guard` warns about a stale copy (pass the absolute path if the bare id is not found). |
+| A mode change seems to be ignored            | `/readonly status` shows the session id the guard is using. A new chat has its own entry, and a session with no entry follows `default_mode`.                                                                                                          |
+| `/readonly` answers "no session context"     | The caller had no session bound, so nothing was written — by design. Use it inside a chat.                                                                                                                                                             |
+| Everything is blocked right after an upgrade | 3.0 ignores 2.x's machine-wide mode. Set the mode in the session, or set `default_mode`.                                                                                                                                                               |
+| A command is refused by `plan` mode          | Only single, allowlisted, read-only commands are admitted. Split the command, or use a session in `writable`.                                                                                                                                          |
 
 ## Uninstall
 
@@ -148,57 +141,6 @@ rm -f "$HERMES_HOME/readonly-guard.state"   # per-session modes; safe to delete
 ```
 
 The first line is enough to stop the guard; the rest removes the code and the state.
-
-## Development
-
-```bash
-# the full suite (stdlib unittest; there is no pytest in the Hermes venv)
-$HERMES_REPO/venv/bin/python -m unittest discover -s tests -t tests -v
-
-# the desktop half is plain ESM, so it is checked as one
-cp desktop/plugin.js /tmp/plugin.mjs && node --check /tmp/plugin.mjs
-
-# after editing desktop/plugin.js
-hermes plugins doctor readonly-guard       # no "stale copy" warning once rescanned
-```
-
-Layout:
-
-```
-readonly-guard/
-├── __init__.py            guard() on pre_tool_call, plan_directive() on pre_llm_call,
-│                          /readonly, register(ctx)
-├── state.py               the per-session table: get_session_mode / set_session_mode /
-│                          next_mode / blocks_writes / status
-├── settings.py            the one setting, read through ctx.get_config
-├── probe.py               the read-only command allowlist plan mode may use
-├── dashboard/             plugin_api.py (FastAPI router) + manifest.json
-├── desktop/plugin.js      the status-bar control and palette rows
-├── tests/                 146 stdlib unittest methods, one file per concern
-├── catalog-entry.yaml     the entry submitted to the plugin catalog
-├── plugin.yaml            manifest: hooks, config_schema, licence, homepage
-└── LICENSE                MIT
-```
-
-Design notes worth knowing before changing behaviour:
-
-- **One table, one writer, one lock.** Every surface writes the same session table, and a
-  read-modify-write runs under a lock; two writers otherwise lose one another's session.
-  Reads are safe regardless, because writes are atomic (`mkstemp` + `replace`).
-- **`session_id`, never `task_id`.** The hook receives both; `task_id` is a fresh uuid per
-  turn, so a mode keyed on it would be forgotten between turns.
-- **The plan-file exception is a containment check**, not a name test: the path must
-  resolve *inside* the `.hermes/plans` directory it names. It is also scoped to the tool
-  *shapes* that write a file, so V4A patches (which can carry several file headers) are
-  refused even when they name a plan file.
-- **Hermes' own prompt builder.** Plan mode injects `agent.plan_prompt.build_plan_prompt`,
-  the same builder `/plan` uses, so the two cannot drift.
-- **Colour is decoration; the label carries the meaning.** The active pill is coloured
-  (green `readonly`, yellow `plan`, red `writable`) and its text colour is chosen for a
-  4.5:1 contrast ratio, which `tests/test_desktop_contract.py` enforces.
-
-`tests/test_packaging.py` pins the manifest, the licence, the versions and the catalog
-entry; `tests/test_readme.py` pins this file's structure.
 
 ## Licence
 
