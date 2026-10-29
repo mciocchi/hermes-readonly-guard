@@ -75,10 +75,10 @@ class TestAllowed(ProbeTestCase):
 class TestShellComposition(ProbeTestCase):
     def test_command_chaining_is_refused(self):
         for command in (
-            "git log; rm -rf /",
+            "git log; rm -rf build",
             "git log && curl example.com",
-            "git log || rm -rf /",
-            "ls & rm -rf /",
+            "git log || rm -rf build",
+            "ls & rm -rf build",
         ):
             self.assertRefused(command, "operator")
 
@@ -91,12 +91,12 @@ class TestShellComposition(ProbeTestCase):
             self.assertRefused(command, "operator")
 
     def test_command_substitution_is_refused(self):
-        for command in ("git log $(rm -rf /)", "cat `rm -rf /`", "ls $(whoami)"):
+        for command in ("git log $(rm -rf build)", "cat `rm -rf build`", "ls $(whoami)"):
             self.assertRefused(command)
 
     def test_newlines_are_refused(self):
-        self.assertRefused("git log\nrm -rf /", "multiple lines")
-        self.assertRefused("git log\rrm -rf /", "multiple lines")
+        self.assertRefused("git log\nrm -rf build", "multiple lines")
+        self.assertRefused("git log\rrm -rf build", "multiple lines")
 
     def test_unbalanced_quoting_is_refused(self):
         self.assertRefused("cat 'unterminated", "parse")
@@ -122,7 +122,7 @@ class TestPrograms(ProbeTestCase):
             "perl -e 'unlink 1'",
             "bash -c 'ls'",
             "sh -c 'ls'",
-            "env rm -rf /",
+            "env rm -rf build",
             "xargs rm",
             "sudo ls",
             "make",
@@ -141,7 +141,7 @@ class TestPrograms(ProbeTestCase):
         self.assertRefused("tree -o out.txt", "not read-only")
 
     def test_a_reader_flag_that_executes_is_refused(self):
-        self.assertRefused("rg --pre 'rm -rf /' pattern .", "not read-only")
+        self.assertRefused("rg --pre 'rm -rf build' pattern .", "not read-only")
         self.assertRefused("rg -z pattern archive.zip", "not read-only")
         self.assertRefused("find . -delete", "allowlist")
         self.assertRefused("find . -fprint out.txt", "allowlist")
@@ -188,7 +188,7 @@ class TestGit(ProbeTestCase):
 
     def test_global_flags_that_inject_config_or_a_pager_are_refused(self):
         for command in (
-            "git -c alias.l='!rm -rf /' l",
+            "git -c alias.l='!rm -rf build' l",
             "git --config-env=x=y status",
             "git --exec-path=/tmp status",
             "git --paginate log",
