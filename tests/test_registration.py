@@ -80,7 +80,7 @@ class TestManifestMatchesRegistration(RegistrationTestCase):
     @staticmethod
     def declared(section: str) -> set[str]:
         """One list section of plugin.yaml, read without a YAML dependency."""
-        lines = (PLUGIN_DIR / "plugin.yaml").read_text().splitlines()
+        lines = (PLUGIN_DIR / "plugin.yaml").read_text(encoding="utf-8").splitlines()
         start = next(i for i, line in enumerate(lines) if line.startswith(f"{section}:"))
         names = set()
         for line in lines[start + 1:]:

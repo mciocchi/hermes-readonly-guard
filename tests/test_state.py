@@ -29,7 +29,7 @@ class StateCase(unittest.TestCase):
         self.addCleanup(patcher.stop)
 
     def write_raw(self, text: str) -> None:
-        Path(self._home.name, state.STATE_FILENAME).write_text(text)
+        Path(self._home.name, state.STATE_FILENAME).write_text(text, encoding="utf-8")
 
 
 class TestSessionTable(StateCase):
@@ -143,6 +143,74 @@ class TestStatus(StateCase):
         self.assertEqual(payload["source"], "default")
         self.assertEqual(payload["session"], "")
         self.assertFalse(payload["blocking"])
+
+
+def _raising(*_args, **_kwargs):
+    """A resolver that fails, for the fallback path."""
+    raise RuntimeError("resolver unavailable")
+
+
+class TestHomeResolver(StateCase):
+    """The state file must land in HERMES's home, never in an assumed ``~/.hermes``.
+
+    ``%LOCALAPPDATA%/hermes`` is the Windows default, and a profile or a session override
+    moves the home on every platform. Hardcoding the POSIX path writes the mode somewhere
+    nobody reads, which looks exactly like the switch doing nothing.
+    """
+
+    def test_the_state_file_follows_hermes_own_resolver(self):
+        home = Path(self._home.name) / "localappdata"
+        with mock.patch.object(state, "_hermes_home_resolver", lambda: home):
+            self.assertEqual(state.state_path(), home / state.STATE_FILENAME)
+
+    def test_a_resolver_that_raises_falls_back_to_HERMES_HOME(self):
+        with mock.patch.object(state, "_hermes_home_resolver", _raising):
+            self.assertEqual(state.state_path(), Path(self._home.name) / state.STATE_FILENAME)
+
+    def test_a_missing_resolver_falls_back_to_HERMES_HOME(self):
+        with mock.patch.object(state, "_hermes_home_resolver", None):
+            self.assertEqual(state.state_path(), Path(self._home.name) / state.STATE_FILENAME)
+
+
+def _refused(src, dst):
+    raise PermissionError(13, "The process cannot access the file")
+
+
+class TestReplaceUnderReader(StateCase):
+    """POSIX renames an open path; Windows returns PermissionError until the reader closes.
+
+    The window is milliseconds (a dashboard poll reading the table while ``/readonly``
+    writes), so a short retry is the whole fix — but it has to be a retry, and the last
+    error still has to reach the caller rather than being swallowed into a silent no-op.
+    """
+
+    def test_a_write_survives_a_reader_holding_the_file_open(self):
+        real_replace = os.replace
+        calls = []
+
+        def flaky(src, dst):
+            calls.append(1)
+            if len(calls) < 3:
+                raise PermissionError(13, "The process cannot access the file")
+            return real_replace(src, dst)
+
+        with mock.patch("os.replace", flaky):
+            state.set_session_mode("s-retry", "plan", source="test")
+        self.assertEqual(state.get_session_mode("s-retry"), "plan")
+        self.assertEqual(len(calls), 3, "expected two refusals and then a third attempt")
+
+    def test_the_last_error_is_raised_when_every_attempt_fails(self):
+        with mock.patch("os.replace", _refused):
+            with self.assertRaises(PermissionError):
+                state.set_session_mode("s-doomed", "plan", source="test")
+        self.assertIsNone(state.get_session_mode("s-doomed"))
+
+    def test_a_failed_write_leaves_no_temp_file_behind(self):
+        with mock.patch("os.replace", _refused):
+            with self.assertRaises(PermissionError):
+                state.set_session_mode("s-doomed", "plan", source="test")
+        leftovers = sorted(p.name for p in Path(self._home.name).iterdir() if p.name.endswith(".tmp"))
+        self.assertEqual(leftovers, [], "the temp file must be cleaned up on failure")
 
 
 if __name__ == "__main__":

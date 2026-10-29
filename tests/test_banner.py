@@ -38,7 +38,7 @@ class TestBanner(unittest.TestCase):
 
     def test_the_banner_uses_the_colours_the_desktop_half_ships(self):
         """A banner that drifts from TONES is wrong in a way nothing else can see."""
-        html = SOURCE.read_text()
+        html = SOURCE.read_text(encoding="utf-8")
         for mode, (bg, fg) in tones().items():
             self.assertIn(bg, html, f"{mode}'s fill {bg} is missing from the banner")
             self.assertIn(fg, html, f"{mode}'s text colour {fg} is missing from the banner")
@@ -51,7 +51,7 @@ class TestBanner(unittest.TestCase):
         that survives a code change it never mentions. A later `sha` bump fails here
         until `image:` follows it, which is the reminder this file exists to give.
         """
-        entry = yaml.safe_load(ENTRY.read_text())
+        entry = yaml.safe_load(ENTRY.read_text(encoding="utf-8"))
         sha = str(entry.get("sha") or "")
         image = str(entry.get("image") or "")
         self.assertRegex(sha, r"^[0-9a-f]{40}$", "a published entry needs a full commit SHA")

@@ -47,7 +47,7 @@ class TestManifestDeclaration(unittest.TestCase):
     def setUp(self):
         import yaml  # the venv has PyYAML; the loader reads plugin.yaml the same way
 
-        self.manifest = yaml.safe_load((PLUGIN_DIR / "plugin.yaml").read_text())
+        self.manifest = yaml.safe_load((PLUGIN_DIR / "plugin.yaml").read_text(encoding="utf-8"))
         self.spec = (self.manifest.get("config_schema") or {}).get("default_mode")
 
     def test_the_manifest_declares_default_mode(self):

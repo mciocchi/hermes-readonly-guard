@@ -16,7 +16,7 @@ from pathlib import Path
 
 from plugin_under_test import PLUGIN_DIR
 
-SOURCE = (PLUGIN_DIR / "desktop" / "plugin.js").read_text()
+SOURCE = (PLUGIN_DIR / "desktop" / "plugin.js").read_text(encoding="utf-8")
 
 def sdk_barrel() -> Path | None:
     """The desktop app's SDK barrel — the authority on what a plugin may import.
@@ -54,7 +54,7 @@ class TestSdkImports(unittest.TestCase):
     def test_every_imported_identifier_is_a_real_sdk_export(self):
         if SDK_BARREL is None:
             self.skipTest("desktop SDK sources not found (set HERMES_REPO to point at a checkout)")
-        barrel = SDK_BARREL.read_text()
+        barrel = SDK_BARREL.read_text(encoding="utf-8")
         match = SDK_IMPORT_RE.search(SOURCE)
         if match is None:
             self.fail("no '@hermes/plugin-sdk' import found in the desktop half")

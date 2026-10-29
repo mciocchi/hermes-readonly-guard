@@ -49,6 +49,11 @@ Requirements: Hermes with plugin manifests at schema 2, Python 3.11 or newer, an
 extra packages — the plugin imports only the standard library and Hermes itself. It makes
 no network calls and defines no environment variables.
 
+Platforms: Linux, macOS, and Windows, with the test suite running on all three. On Windows,
+Hermes executes `terminal` through Git Bash, so read-only probes are the same coreutils
+commands (`ls`, `cat`, `grep`, `find`, `git`). `file`, `tree`, `column`, `jq`, and `rg` are
+not part of Git Bash, so those probes answer "command not found" until you install them.
+
 ## The three modes
 
 | Mode       | Inspection tools | Single read-only probes | Plan markdown | Everything else |
@@ -132,6 +137,7 @@ reads as `readonly`.
 | A mode change seems to be ignored            | `/readonly status` shows the session id the guard is using. A new chat has its own entry, and a session with no entry follows `default_mode`.                                                                                                          |
 | `/readonly` answers "no session context"     | The caller had no session bound, so nothing was written — by design. Use it inside a chat.                                                                                                                                                             |
 | Everything is blocked right after an upgrade | 3.0 ignores 2.x's machine-wide mode. Set the mode in the session, or set `default_mode`.                                                                                                                                                               |
+| A probe says "command not found" on Windows | Git Bash ships the coreutils the probe list assumes, but not `file`, `tree`, `column`, `jq`, or `rg`. Install the program, or use `read_file` and `search_files`. |
 | A command is refused by `readonly` or `plan` | Only single, allowlisted, read-only commands are admitted. Split the command, or use a session in `writable`.                                                                                                                                          |
 
 ## Uninstall
