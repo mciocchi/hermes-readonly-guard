@@ -54,6 +54,18 @@ class TestStructure(unittest.TestCase):
         self.assertIn(f"hermes plugins install {repo}", install)
         self.assertIn("hermes plugins enable readonly-guard", install)
 
+    def test_the_banner_is_the_first_image_and_sits_above_the_prose(self):
+        """One image, at the top, pointing at this repository's own file.
+
+        A pinned raw URL would need a bump every time the art changes; `./docs/banner.png`
+        is what GitHub renders and what the docs build resolves against the pinned tree.
+        """
+        images = IMAGE_RE.findall(TEXT)
+        self.assertTrue(images, "the README embeds no image")
+        self.assertEqual(images[0], "./docs/banner.png")
+        self.assertLess(TEXT.index(images[0]), TEXT.index("## Why"))
+        self.assertLess(TEXT.index(images[0]), TEXT.index("A Hermes plugin"))
+
     def test_the_readme_names_the_licence_the_manifest_declares(self):
         licence = str(yaml.safe_load((PLUGIN_DIR / "plugin.yaml").read_text(encoding="utf-8"))["license"])
         section = TEXT.split("## Licence", 1)[1]

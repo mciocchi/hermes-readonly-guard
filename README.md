@@ -1,5 +1,7 @@
 # hermes-readonly-guard
 
+![readonly-guard: one session, three modes — read-only, plan, and writable with its lease counting down](./docs/banner.png)
+
 A Hermes plugin that holds an agent to a posture **in code**, not in a prompt. While
 `readonly` or `plan` is active, every tool call that is not on a small inspection
 allowlist — or a single, allowlisted, read-only command — is refused before it runs, and
