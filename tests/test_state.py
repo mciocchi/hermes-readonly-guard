@@ -213,5 +213,42 @@ class TestReplaceUnderReader(StateCase):
         self.assertEqual(leftovers, [], "the temp file must be cleaned up on failure")
 
 
+class TestResetAll(StateCase):
+    """`reset_all` is the startup sweep: every stored session becomes read-only.
+
+    Entries are rewritten, never dropped: an empty table means "no sessions", and every
+    session would then fall back to `default_mode`, which may be writable.
+    """
+
+    def test_every_session_becomes_readonly(self):
+        state.set_session_mode("s-w", "writable", source="test")
+        state.set_session_mode("s-p", "plan", source="test")
+        state.set_session_mode("s-r", "readonly", source="test")
+        self.assertEqual(state.reset_all(reason="startup"), 2)  # two changed, one already
+        for sid in ("s-w", "s-p", "s-r"):
+            self.assertEqual(state.get_session_mode(sid), "readonly", sid)
+
+    def test_no_entry_is_dropped(self):
+        for i in range(5):
+            state.set_session_mode(f"s{i}", "writable", source="test")
+        state.reset_all(reason="startup")
+        self.assertEqual(len(state._sessions()), 5, "the table must keep its sessions")
+
+    def test_the_reason_is_recorded(self):
+        state.set_session_mode("s-w", "writable", source="test")
+        state.reset_all(reason="startup")
+        self.assertEqual(state._sessions()["s-w"]["updated_by"], "startup")
+
+    def test_an_empty_table_writes_nothing(self):
+        self.assertEqual(state.reset_all(reason="startup"), 0)
+        self.assertFalse(state.state_path().exists(), "no file for an empty table")
+
+    def test_an_already_readonly_table_is_left_alone(self):
+        state.set_session_mode("s-r", "readonly", source="test")
+        before = state._sessions()["s-r"]["updated_at"]
+        self.assertEqual(state.reset_all(reason="startup"), 0)
+        self.assertEqual(state._sessions()["s-r"]["updated_at"], before, "no churn when nothing changes")
+
+
 if __name__ == "__main__":
     unittest.main()
