@@ -1,3 +1,7 @@
 # Bytecode caches: rebuilt by the interpreter, never source.
 __pycache__/
 *.pyc
+
+# The mode table belongs in HERMES_HOME. A run with HERMES_HOME mis-set would otherwise
+# put this machine's session modes in the repository.
+*.state

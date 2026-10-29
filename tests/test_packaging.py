@@ -147,5 +147,22 @@ class TestNoMachineSpecificPaths(unittest.TestCase):
         self.assertEqual(offenders, [])
 
 
+class TestIgnoreRules(unittest.TestCase):
+    """Two things must never be committable: rebuilt bytecode, and the mode table of the
+    machine that ran the tests."""
+
+    def setUp(self):
+        self.ignore = (PLUGIN_DIR / ".gitignore").read_text().splitlines()
+
+    def test_bytecode_is_ignored(self):
+        self.assertIn("__pycache__/", self.ignore)
+        self.assertIn("*.pyc", self.ignore)
+
+    def test_a_stray_state_file_cannot_be_committed(self):
+        """`readonly-guard.state` normally lives in HERMES_HOME, outside the repo. A run
+        with HERMES_HOME mis-set can create one here instead."""
+        self.assertIn("*.state", self.ignore)
+
+
 if __name__ == "__main__":
     unittest.main()
