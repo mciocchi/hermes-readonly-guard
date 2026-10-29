@@ -116,6 +116,23 @@ class TestSessionScope(unittest.TestCase):
         self.assertIn("?session=", SOURCE)
         self.assertIn("body = session ?", SOURCE)
 
+    def test_the_writable_pill_counts_down_and_never_resizes(self):
+        """Three separate ways this can twitch, pinned one by one.
+
+        Proportional digits change width as they tick; a shorter number changes width when
+        the digits drop; and a countdown that only appears while active resizes the whole
+        track on click. The slot is always rendered when the feature is on, so the pill's
+        width is a function of the setting, not of the mode or the minute.
+        """
+        self.assertIn("expiry_minutes", SOURCE)          # the payload field it reads
+        self.assertIn("tabular-nums", SOURCE)            # digits share one width
+        self.assertIn("minWidth", SOURCE)                # the slot is a fixed box
+        self.assertIn("mode === 'writable' && left !== null", SOURCE)
+
+    def test_no_minutes_when_the_setting_is_off(self):
+        """`writable_expiry_minutes: 0` must render the plain label, not an empty slot."""
+        self.assertIn("counting ? jsx(", SOURCE)
+
     def test_the_chip_reads_the_writable_countdown(self):
         """A countdown the chip ignores is a limit the user cannot see coming."""
         self.assertIn("expires_in", SOURCE)

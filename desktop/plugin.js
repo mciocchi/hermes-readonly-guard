@@ -149,7 +149,37 @@ function ModeControl() {
   const tip = isError ? t('unavailable') : loading ? t('loading')
     : session ? t(`tip_${mode}`) + (expiresIn === null ? '' : ` · ${Math.ceil(expiresIn / 60)} min left`)
       : t('tip_draft')
-  const labels = { readonly: t('mode_readonly'), plan: t('mode_plan'), writable: t('mode_writable') }
+  // The lease counts down on the pill itself. Geometry is the whole problem here:
+  // `counting` is decided by the SETTING, not by the current mode, so the slot exists at a
+  // fixed width whether or not writable is active — otherwise clicking "writable" would
+  // grow the pill and shove the other two left. Inside the slot, tabular figures and a
+  // right-aligned fixed width stop the digits moving as the number changes.
+  const expiryMinutes = data && typeof data.expiry_minutes === 'number' ? data.expiry_minutes : 0
+  const counting = expiryMinutes > 0
+  // A number under a minute reads "<1m" rather than "1m", which would sit there for a
+  // whole minute while the lease was already nearly gone.
+  const left = expiresIn === null ? null : expiresIn < 60 ? '<1m' : `${Math.ceil(expiresIn / 60)}m`
+  const labels = {
+    readonly: t('mode_readonly'),
+    plan: t('mode_plan'),
+    writable: counting ? jsx('span', {
+      style: { alignItems: 'baseline', display: 'inline-flex' },
+      children: [
+        t('mode_writable'),
+        jsx('span', {
+          key: 'left',
+          style: {
+            display: 'inline-block',
+            fontVariantNumeric: 'tabular-nums',
+            minWidth: '5ch',        // measured: 5ch is the first width where " · 30m",
+                                    // " · 9m", " · <1m" and empty are all exactly equal
+            textAlign: 'right'
+          },
+          children: mode === 'writable' && left !== null ? ` · ${left}` : ''
+        })
+      ]
+    }) : t('mode_writable')
+  }
 
   return jsx(Tip, {
     label: tip,
