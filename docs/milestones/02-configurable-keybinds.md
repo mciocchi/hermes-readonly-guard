@@ -1,6 +1,6 @@
 ---
 schema: milestone/1
-architecture: 1
+architecture: 2
 mvp: false
 satisfies: [I7, I8]
 ---
@@ -231,7 +231,8 @@ files: [desktop/plugin.js, tests/test_desktop_contract.py, README.md]
 gate: python -m unittest discover -s tests -t tests
 ```
 
-**Context.** Architecture 1 §3 requires `category: 'Read-only guard'`; the host does not accept it.
+**Context.** Architecture 2 §3 sets `category: 'session'`; architecture 1 required
+`category: 'Read-only guard'`, which the host does not accept.
 `KeybindCategory` is a closed union — `composer | profiles | session | navigation | view`
 (`apps/desktop/src/lib/keybinds/actions.ts:12`) — and
 `apps/desktop/src/app/settings/keybind-settings.tsx:181-190` iterates `KEYBIND_CATEGORIES` and
@@ -240,9 +241,10 @@ is reachable only by typing a search term. The category is therefore `session`: 
 session's mode, where `view` is the catch-all for layout and appearance (`actions.ts:18-19`).
 
 Two consequences the review found: F3's "bind `writable` to a key of your own" has no route without
-the panel, and the milestone's Exit names a heading that never exists. The architecture line and the
-Exit wording belong to the architect — see the bounce below — so this ticket is blocked on
-architecture v2 and must not be implemented before it lands.
+the panel, and the milestone's Exit named a heading that never exists. Both were the architect's to
+fix, and both are fixed in architecture 2 — §3 now names `session` with the union cited, D9 records
+`view` as the rejected alternative, and the Exit reads "Session". The bounce below is the record of
+that amendment, not an open blocker: this ticket is implementable.
 
 **Acceptance**
 
