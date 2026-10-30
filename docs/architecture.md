@@ -1,6 +1,6 @@
 ---
 schema: architecture/1
-version: 1
+version: 2
 status: draft
 project: hermes-readonly-guard
 ---
@@ -42,7 +42,11 @@ at a time, and the switch is not a tool the agent can call.
   new sessions, never "this machine".
 - **Keybinds (02).** Contributions in `KEYBINDS_AREA` with ids `readonly-guard.readonly`,
   `readonly-guard.plan`, `readonly-guard.writable`; defaults `['mod+alt+r']`, `['mod+alt+p']`,
-  `[]`; category `Read-only guard`. Rebinding is the host's Settings UI, not a plugin setting.
+  `[]`; category `session` — a member of the host's closed union
+  `'composer' | 'profiles' | 'session' | 'navigation' | 'view'`
+  (`apps/desktop/src/lib/keybinds/actions.ts:12`), because the Settings panel iterates only those
+  members (`apps/desktop/src/app/settings/keybind-settings.tsx:181-190`) and renders nothing for a
+  category outside the union. Rebinding is the host's Settings UI, not a plugin setting.
 - **Keybind availability.** The registry belongs to the desktop renderer's plugin SDK, so keybind
   contributions surface only in the Hermes Desktop app. The CLI and TUI have a fixed keymap with
   no plugin registry, gateway platforms have no keyboard, and a browser client has no SDK bridge.
@@ -84,6 +88,7 @@ at a time, and the switch is not a tool the agent can call.
 | D6 | Keybinds are contributed to the host's keybind registry; the plugin adds no binding setting | a `keybinds:` choice in `config_schema` | the host already renders and persists rebinds; a second store would silently disagree |
 | D7 | `mod+alt+r` / `mod+alt+p` / `writable` unbound, desktop only | three chords including `writable`; a single cycle-mode key; binding the CLI too | `mod+alt+letter` is free in Hermes (only `v`, `t`, `n` are taken) and in GNOME (only arrows, Tab, Escape); a writable keystroke arms full access, so it is opt-in; the CLI has no plugin key registry at all |
 | D8 | `01` ratifies the shipped guard, `02` carries the keybinds | a single milestone | every `Delivered by` cell must name a milestone that exists, and the guard was not delivered by the keybind milestone |
+| D9 | The keybind category is `session`, a member of the host's `KeybindCategory` union | `Read-only guard` (an invented label), and `view` (the host's catch-all) | The panel lists only the five union members, so an invented category registers, fires, and never appears in Settings — which is what happened: three reviewers found rows reachable only by search, and the fix was a spec change plus a code change. `view` would render, but the host documents it as layout and appearance, and this action changes a session's mode |
 
 ## 7. Non-goals
 

@@ -9,7 +9,7 @@ satisfies: [I7, I8]
 
 **Goal.** A user can switch a session to read-only or plan from the keyboard in the Desktop app, and can rebind those keys and bind `writable` in Settings without editing a file.
 
-**Exit.** With the desktop focused and a chat open: `Ctrl+Alt+R` fills the read-only pill, `Ctrl+Alt+P` fills the plan pill, and Settings → Keybinds lists all three actions under "Read-only guard" with `writable` showing no binding.
+**Exit.** With the desktop focused and a chat open: `Ctrl+Alt+R` fills the read-only pill, `Ctrl+Alt+P` fills the plan pill, and Settings → Keybinds lists all three actions under "Session" with `writable` showing no binding.
 
 **Out of scope.** OS-global hotkeys; a cycle-mode key; keybinds in the CLI, TUI, gateway or a browser client — those surfaces expose `/readonly` instead, because the desktop keybind registry is not available to them.
 
