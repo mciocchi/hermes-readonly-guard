@@ -110,7 +110,7 @@ In the **Desktop app** the guard ships two keybinds and leaves the third for you
 | Plan for this chat | `Ctrl+Alt+P` (`⌘⌥P` on macOS) |
 | Writable for this chat | unbound — bind it yourself |
 
-All three appear in **Settings → Keybinds** under *Read-only guard*, where you can rebind them;
+All three appear in **Settings → Keybinds** under *Session*, where you can rebind them;
 the defaults are only the starting point. They fire while the Hermes window has focus, never
 system-wide, and a key pressed with no chat focused does nothing but tell you so.
 

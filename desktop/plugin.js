@@ -272,7 +272,9 @@ export default {
         data: {
           id: bind.id,
           label: bind.label,
-          category: 'Read-only guard',
+          // A member of the host's KeybindCategory union (lib/keybinds/actions.ts:12):
+          // anything else registers, fires, and never appears in Settings (decision D9).
+          category: 'session',
           defaults: bind.defaults,
           run: () => setModeFromKeybind(bind.mode)
         }

@@ -40,3 +40,14 @@ without keybinds — CLI/TUI, gateway, browser — each pointing at `/readonly`.
 
 Rejected: a one-line note under the modes table. A user who presses a key in a terminal needs the
 answer where they look for the feature, not in a footnote three sections away.
+
+## 2026-10-30 — T006: the keybind rows render under Session
+
+The contributions now declare `category: 'session'`, a member of the host's `KeybindCategory`
+union, instead of the invented `'Read-only guard'`. A test reads that union out of the host's own
+source and fails on any category outside it; the README names the same heading.
+
+Why: the Settings panel iterates only the union's members, so the old value registered, fired, and
+appeared in no section — reachable only by typing a search term, which left "bind `writable` to a
+key of your own" with no route. Rejected: `view`, which would render but is the host's catch-all
+for layout and appearance, and a plugin-rendered shortcut editor.

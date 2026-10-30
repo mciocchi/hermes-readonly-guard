@@ -271,5 +271,56 @@ class TestKeybinds(unittest.TestCase):
         self.assertNotIn("area: 'keybinds'", SOURCE)
 
 
+#: The category a keybind contribution declares, as written in desktop/plugin.js.
+KEYBIND_CATEGORY_RE = re.compile(r"category: '([^']+)'")
+
+
+def host_keybind_categories() -> set[str]:
+    """The categories the host's Settings panel can render.
+
+    Read from the host's own union (`KeybindCategory` in lib/keybinds/actions.ts) rather than
+    restated here: a list copied into a test cannot notice the host widening or renaming one.
+    Empty means the Desktop sources are not on this machine.
+    """
+    if SDK_BARREL is None:
+        return set()
+    actions = SDK_BARREL.parents[4] / "apps" / "desktop" / "src" / "lib" / "keybinds" / "actions.ts"
+    if not actions.is_file():
+        return set()
+    match = re.search(r"export type KeybindCategory = ([^\n]+)", actions.read_text(encoding="utf-8"))
+    if match is None:
+        return set()
+    return set(re.findall(r"'([a-z]+)'", match.group(1)))
+
+
+class TestKeybindCategory(unittest.TestCase):
+    """The Settings panel renders only the categories the host enumerates.
+
+    A contribution with any other string registers, fires, and appears in no section — the shape
+    that shipped once, reachable only by typing a search term, and the reason this test exists.
+    """
+
+    def test_every_keybind_category_is_one_the_host_offers(self):
+        allowed = host_keybind_categories()
+        if not allowed:
+            self.skipTest("desktop SDK sources not found (set HERMES_REPO to point at a checkout)")
+        used = set(KEYBIND_CATEGORY_RE.findall(SOURCE))
+        self.assertTrue(used, "the desktop half declares no keybind category")
+        self.assertEqual(
+            sorted(used - allowed), [],
+            f"the Settings panel lists only {sorted(allowed)}; a row in any other category is "
+            f"invisible except by search",
+        )
+
+    def test_the_readme_names_the_category_the_code_uses(self):
+        """A reader who opens Settings looks for the heading the README promised."""
+        used = KEYBIND_CATEGORY_RE.findall(SOURCE)
+        self.assertTrue(used, "the desktop half declares no keybind category")
+        readme = (PLUGIN_DIR / "README.md").read_text(encoding="utf-8")
+        for category in used:
+            self.assertIn(category.capitalize(), readme,
+                          f"README never names the Settings heading {category.capitalize()!r}")
+
+
 if __name__ == "__main__":
     unittest.main()
