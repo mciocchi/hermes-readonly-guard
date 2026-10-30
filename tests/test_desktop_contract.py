@@ -77,8 +77,8 @@ class TestContributionAreas(unittest.TestCase):
         """
         values = [value.strip() for value in AREA_RE.findall(SOURCE)]
         self.assertEqual(
-            len(values), 2,
-            f"expected 2 registration sites (the status-bar control + the palette loop); "
+            len(values), 3,
+            f"expected 3 registration sites (status bar + palette + keybinds); "
             f"update this count if you add one: {values}",
         )
         quoted = [value for value in values if value[0] in "'\""]
@@ -205,6 +205,43 @@ class TestModeColours(unittest.TestCase):
         )
         self.assertIn("'aria-pressed': active", SOURCE)
         self.assertIn("background: active ?", SOURCE)
+
+
+#: One `KEYBINDS` table row: id, mode, label, defaults. The table is written one entry per
+#: line in this field order, and this parser is why.
+KEYBIND_RE = re.compile(
+    r"id: '(readonly-guard\.(\w+))', mode: '(\w+)', label: '[^']+', defaults: \[([^\]]*)\]"
+)
+
+
+def keybinds() -> list[dict]:
+    """[{id, mode, defaults}] from the plugin's KEYBINDS table, in source order."""
+    rows = [
+        {"id": m.group(1), "mode": m.group(2),
+         "defaults": re.findall(r"'([^']+)'", m.group(4))}
+        for m in KEYBIND_RE.finditer(SOURCE)
+    ]
+    if not rows:
+        raise AssertionError(
+            "no KEYBINDS rows matched; the table must be one entry per line as "
+            "id/mode/label/defaults — see the plan's shape block"
+        )
+    return rows
+
+
+class TestKeybinds(unittest.TestCase):
+    """The keyboard face of the same switch. `mod` is Cmd on macOS, Ctrl elsewhere."""
+
+    def test_the_read_only_keybind_is_registered_with_its_default(self):
+        by_mode = {row["mode"]: row for row in keybinds()}
+        self.assertIn("readonly", by_mode)
+        self.assertEqual(by_mode["readonly"]["id"], "readonly-guard.readonly")
+        self.assertEqual(by_mode["readonly"]["defaults"], ["mod+alt+r"])
+
+    def test_the_keybind_area_is_an_sdk_constant(self):
+        """Same trap as the palette: a literal area id registers and never appears."""
+        self.assertIn("KEYBINDS_AREA", SOURCE)
+        self.assertNotIn("area: 'keybinds'", SOURCE)
 
 
 if __name__ == "__main__":

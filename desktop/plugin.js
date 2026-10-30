@@ -26,7 +26,7 @@
  * shipped three dead palette rows.
  */
 
-import { haptic, host, PALETTE_AREA, queryClient, STATUSBAR_AREAS, Tip, usePluginI18n, useQuery, useValue } from '@hermes/plugin-sdk'
+import { haptic, host, KEYBINDS_AREA, PALETTE_AREA, queryClient, STATUSBAR_AREAS, Tip, usePluginI18n, useQuery, useValue } from '@hermes/plugin-sdk'
 import { jsx } from 'react/jsx-runtime'
 
 const ID = 'readonly-guard'
@@ -46,6 +46,18 @@ const TONES = {
   plan: { bg: '#facc15', fg: '#1c1917' },
   writable: { bg: '#b91c1c', fg: '#ffffff' }
 }
+
+/**
+ * The keyboard face of the same switch. `mod` is Cmd on macOS and Ctrl elsewhere.
+ *
+ * The ids are literals and never derived: the host persists a rebind against `id`, so a
+ * renamed or computed id silently drops someone's chosen key after an upgrade (decision D6).
+ * `writable` ships with no default on purpose — one keystroke that arms full write access is
+ * a keystroke the user should choose (D7).
+ */
+const KEYBINDS = [
+  { id: 'readonly-guard.readonly', mode: 'readonly', label: 'Set this chat to read-only', defaults: ['mod+alt+r'] }
+]
 
 // Bound in register(ctx): ctx.rest is the only door to our own backend.
 let api = null
@@ -232,6 +244,21 @@ export default {
           id: `cmd-${mode}`,
           label: `${ID}: ${mode} (this chat, or new sessions)`,
           run: () => setMode(mode)
+        }
+      })
+    })
+
+    KEYBINDS.forEach((bind, index) => {
+      ctx.register({
+        id: `key-${bind.mode}`,
+        area: KEYBINDS_AREA,
+        order: 300 + index,
+        data: {
+          id: bind.id,
+          label: bind.label,
+          category: 'Read-only guard',
+          defaults: bind.defaults,
+          run: () => setMode(bind.mode)
         }
       })
     })
