@@ -31,7 +31,7 @@ feature: F1
 priority: P0
 order: 1
 effort: 3
-status: todo
+status: in_progress
 depends_on: []
 files: [desktop/plugin.js, tests/test_desktop_contract.py]
 gate: python -m unittest discover -s tests -t tests -p "test_desktop_contract.py"
@@ -55,6 +55,14 @@ A4. The SDK barrel exports `KEYBINDS_AREA` — the existing barrel check must pa
 - `tests/test_desktop_contract.py::test_the_read_only_keybind_is_registered_with_its_default` fails first.
 - `tests/test_desktop_contract.py::test_the_keybind_area_is_an_sdk_constant` fails first on a string literal `'keybinds'`.
 
+#### Review
+
+```review
+attempt: 1
+verdict: FAIL_CODE
+sha: 8f7ed25
+note: category 'Read-only guard' is outside the host's KeybindCategory union, so no row renders in Settings -> Keybinds
+```
 ### T002: The plan binding
 
 ```ticket
@@ -63,7 +71,7 @@ feature: F2
 priority: P0
 order: 2
 effort: 1
-status: todo
+status: done
 depends_on: [T001]
 files: [desktop/plugin.js, tests/test_desktop_contract.py]
 gate: python -m unittest discover -s tests -t tests -p "test_desktop_contract.py"
@@ -83,6 +91,13 @@ A4. The two bindings do not share a default.
 
 - `tests/test_desktop_contract.py::test_the_plan_keybind_is_registered_with_its_default` fails first.
 
+#### Review
+
+```review
+attempt: 1
+verdict: PASS
+sha: 4c2638b
+```
 ### T003: The writable action, unbound, and the no-session refusal
 
 ```ticket
@@ -91,7 +106,7 @@ feature: F3
 priority: P0
 order: 3
 effort: 3
-status: todo
+status: in_progress
 depends_on: [T002]
 files: [desktop/plugin.js, tests/test_desktop_contract.py]
 gate: python -m unittest discover -s tests -t tests -p "test_desktop_contract.py"
@@ -115,6 +130,14 @@ A5. `setMode` is still reached when a session is focused.
 - `tests/test_desktop_contract.py::test_writable_ships_unbound` fails first.
 - `tests/test_desktop_contract.py::test_a_keybind_with_no_focused_session_does_not_change_state` fails first.
 
+#### Review
+
+```review
+attempt: 1
+verdict: FAIL_CODE
+sha: 025b5e3
+note: F3 unreachable for the same reason: the category matches no section; the fix is the architecture's contract first (BOUNCE_SPEC)
+```
 ### T004: The host owns the rebind store
 
 ```ticket
@@ -123,7 +146,7 @@ feature: F4
 priority: P1
 order: 4
 effort: 2
-status: todo
+status: done
 depends_on: [T003]
 files: [tests/test_packaging.py, plugin.yaml]
 gate: python -m unittest discover -s tests -t tests -p "test_packaging.py"
@@ -146,6 +169,13 @@ A3. The three ids are distinct.
 - `tests/test_packaging.py::test_the_plugin_adds_no_keybind_setting` fails first if a keybind key is ever added.
 - `tests/test_packaging.py::test_the_keybind_ids_are_literal_strings` fails first on a derived id.
 
+#### Review
+
+```review
+attempt: 1
+verdict: PASS
+sha: 063ddf3
+```
 ### T005: The README says where the keys do not work
 
 ```ticket
@@ -154,7 +184,7 @@ feature: F5
 priority: P1
 order: 5
 effort: 2
-status: todo
+status: done
 depends_on: [T003]
 files: [README.md, tests/test_readme.py]
 gate: python -m unittest discover -s tests -t tests -p "test_readme.py"
@@ -177,3 +207,12 @@ A5. The full suite passes, not only `test_readme.py`.
 
 - `tests/test_readme.py::test_the_keyboard_shortcuts_section_scopes_itself_to_the_desktop_app` fails first.
 - `tests/test_readme.py::test_the_sections_a_reader_needs_are_present_in_order` fails first when the heading is added without `SECTIONS`.
+
+#### Review
+
+```review
+attempt: 1
+verdict: PASS
+sha: 7713fb8
+note: README claims verified; the milestone Exit is a keystroke and remains unverified
+```
