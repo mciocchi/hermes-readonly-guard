@@ -24,3 +24,11 @@ focused instead of writing the default for new sessions.
 Two rejected designs: binding `writable` to a third chord (one mis-typed key would arm full write
 access), and letting `setMode` fall through to the default (it would change every future session
 while the user was looking at an empty window).
+
+## 2026-10-29 — T004: pin the rebind contract, add no setting
+
+Two tests now hold the contract the host relies on: `config_schema` carries exactly the two
+settings it had, and the three contribution ids are literal strings.
+
+Rejected: storing bindings in the plugin so the CLI could read them too — the CLI has no keybind
+registry, and a second store would go stale the first time someone rebinds in Settings.

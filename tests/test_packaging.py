@@ -171,5 +171,29 @@ class TestIgnoreRules(unittest.TestCase):
         self.assertIn("*.state", self.ignore)
 
 
+KEYBIND_IDS = ("readonly-guard.readonly", "readonly-guard.plan", "readonly-guard.writable")
+
+
+class TestKeybindSettings(unittest.TestCase):
+    """The host persists a rebind against the contribution id; the plugin must not compete.
+
+    These guards pass the moment they are written, because the code they describe already
+    behaves. Their value is the mutation: add a `keybinds:` setting, or derive an id, and
+    the suite goes red here instead of in a user's Settings pane.
+    """
+
+    def test_the_plugin_adds_no_keybind_setting(self):
+        declared = set((read_manifest().get("config_schema") or {}).keys())
+        self.assertEqual(declared, {"default_mode", "writable_expiry_minutes"},
+                         "a keybind setting would be a second source of truth for a rebind")
+
+    def test_the_keybind_ids_are_literal_strings(self):
+        source = (PLUGIN_DIR / "desktop" / "plugin.js").read_text(encoding="utf-8")
+        for keybind_id in KEYBIND_IDS:
+            self.assertIn(f"id: '{keybind_id}'", source,
+                          f"{keybind_id} must be a literal; a derived id drops the user's rebind")
+        self.assertNotIn("readonly-guard.$", source)
+
+
 if __name__ == "__main__":
     unittest.main()
