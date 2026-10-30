@@ -31,7 +31,7 @@ feature: F1
 priority: P0
 order: 1
 effort: 3
-status: in_progress
+status: done
 depends_on: []
 files: [desktop/plugin.js, tests/test_desktop_contract.py]
 gate: python -m unittest discover -s tests -t tests -p "test_desktop_contract.py"
@@ -58,10 +58,10 @@ A4. The SDK barrel exports `KEYBINDS_AREA` — the existing barrel check must pa
 #### Review
 
 ```review
-attempt: 1
-verdict: FAIL_CODE
-sha: 8f7ed25
-note: category 'Read-only guard' is outside the host's KeybindCategory union, so no row renders in Settings -> Keybinds
+attempt: 2
+verdict: PASS
+sha: 4e255b7
+note: the category defect it failed on is fixed at 4e255b7; re-reviewed at that commit
 ```
 ### T002: The plan binding
 
@@ -106,7 +106,7 @@ feature: F3
 priority: P0
 order: 3
 effort: 3
-status: in_progress
+status: done
 depends_on: [T002]
 files: [desktop/plugin.js, tests/test_desktop_contract.py]
 gate: python -m unittest discover -s tests -t tests -p "test_desktop_contract.py"
@@ -133,10 +133,10 @@ A5. `setMode` is still reached when a session is focused.
 #### Review
 
 ```review
-attempt: 1
-verdict: FAIL_CODE
-sha: 025b5e3
-note: F3 unreachable for the same reason: the category matches no section; the fix is the architecture's contract first (BOUNCE_SPEC)
+attempt: 2
+verdict: PASS
+sha: 4e255b7
+note: F3's route to Settings is restored at 4e255b7; re-reviewed at that commit
 ```
 ### T004: The host owns the rebind store
 
@@ -225,7 +225,7 @@ feature: F4
 priority: P0
 order: 6
 effort: 2
-status: todo
+status: done
 depends_on: [T003]
 files: [desktop/plugin.js, tests/test_desktop_contract.py, README.md]
 gate: python -m unittest discover -s tests -t tests
@@ -265,4 +265,13 @@ type: BOUNCE_ARCH
 from: pm
 to: architect
 note: architecture 1 §3 fixes category 'Read-only guard', which is outside the host's KeybindCategory union (actions.ts:12), and milestone 02's Exit names the same string as a Settings heading; both need architecture v2 before T006 can satisfy A1
+```
+
+#### Review
+
+```review
+attempt: 1
+verdict: PASS
+sha: 4e255b7
+note: gate and full suite 209 OK; the category test reads the host's union and fails on any other value
 ```
