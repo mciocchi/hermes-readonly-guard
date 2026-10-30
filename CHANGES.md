@@ -15,3 +15,12 @@ has one).
 Plan ships on `mod+alt+p`. The table is the only place a binding is written, so the two bound
 modes cannot drift apart; `mod+alt` is the unused-letter namespace in Hermes (only `v`, `t` and
 `n` are taken) and in GNOME (only arrows, Tab and Escape).
+
+## 2026-10-29 — T003: writable ships unbound, and a key with no chat focused does nothing
+
+`writable` is registered with no default binding, and every keybind now refuses when no chat is
+focused instead of writing the default for new sessions.
+
+Two rejected designs: binding `writable` to a third chord (one mis-typed key would arm full write
+access), and letting `setMode` fall through to the default (it would change every future session
+while the user was looking at an empty window).

@@ -245,6 +245,26 @@ class TestKeybinds(unittest.TestCase):
         self.assertEqual(by_mode["plan"]["defaults"], ["mod+alt+p"])
         self.assertNotEqual(by_mode["plan"]["defaults"], by_mode["readonly"]["defaults"])
 
+    def test_writable_ships_unbound(self):
+        by_mode = {row["mode"]: row for row in keybinds()}
+        self.assertIn("writable", by_mode)
+        self.assertEqual(by_mode["writable"]["id"], "readonly-guard.writable")
+        self.assertEqual(by_mode["writable"]["defaults"], [])
+
+    def test_a_keybind_with_no_focused_session_does_not_change_state(self):
+        """Per-session mode, machine-wide key: with nothing focused, `setMode` would write the
+        DEFAULT for new sessions rather than this chat's mode (invariant I8)."""
+        self.assertIn("function setModeFromKeybind(mode)", SOURCE)
+        block = SOURCE.split("function setModeFromKeybind(mode)", 1)[1].split("\n}", 1)[0]
+        self.assertIn("scopeNow()", block)
+        self.assertIn("host.notify", block)
+        self.assertIn("return", block)
+        self.assertLess(
+            block.index("if (!session)"),
+            block.index("setMode("),
+            "the guard must come before the write, not after it",
+        )
+
     def test_the_keybind_area_is_an_sdk_constant(self):
         """Same trap as the palette: a literal area id registers and never appears."""
         self.assertIn("KEYBINDS_AREA", SOURCE)

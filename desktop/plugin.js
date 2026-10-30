@@ -57,7 +57,8 @@ const TONES = {
  */
 const KEYBINDS = [
   { id: 'readonly-guard.readonly', mode: 'readonly', label: 'Set this chat to read-only', defaults: ['mod+alt+r'] },
-  { id: 'readonly-guard.plan', mode: 'plan', label: 'Set this chat to plan', defaults: ['mod+alt+p'] }
+  { id: 'readonly-guard.plan', mode: 'plan', label: 'Set this chat to plan', defaults: ['mod+alt+p'] },
+  { id: 'readonly-guard.writable', mode: 'writable', label: 'Set this chat to writable', defaults: [] }
 ]
 
 // Bound in register(ctx): ctx.rest is the only door to our own backend.
@@ -85,6 +86,20 @@ async function setMode(mode, session = scopeNow()) {
     message: session ? `${ID}: ${mode}` : `${ID}: new sessions start ${mode}`
   })
   return next
+}
+
+/**
+ * A keybind fires machine-wide; the mode is per session. With no chat focused, `setMode` would
+ * write the DEFAULT new sessions start with — a surprising side effect for a key press, and one
+ * the chip would not show. Refuse, and say why (invariant I8).
+ */
+function setModeFromKeybind(mode) {
+  const session = scopeNow()
+  if (!session) {
+    host.notify({ kind: 'info', message: `${ID}: no chat is focused — open one, then press the key again` })
+    return
+  }
+  void setMode(mode, session)
 }
 
 /** One segment. `aria-pressed` carries the selection; only the selected one is filled. */
@@ -259,7 +274,7 @@ export default {
           label: bind.label,
           category: 'Read-only guard',
           defaults: bind.defaults,
-          run: () => setMode(bind.mode)
+          run: () => setModeFromKeybind(bind.mode)
         }
       })
     })
