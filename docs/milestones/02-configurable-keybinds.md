@@ -216,3 +216,51 @@ verdict: PASS
 sha: 7713fb8
 note: README claims verified; the milestone Exit is a keystroke and remains unverified
 ```
+
+### T006: Put the keybind rows in a category the host actually renders
+
+```ticket
+id: T006
+feature: F4
+priority: P0
+order: 6
+effort: 2
+status: todo
+depends_on: [T003]
+files: [desktop/plugin.js, tests/test_desktop_contract.py, README.md]
+gate: python -m unittest discover -s tests -t tests
+```
+
+**Context.** Architecture 1 §3 requires `category: 'Read-only guard'`; the host does not accept it.
+`KeybindCategory` is a closed union — `composer | profiles | session | navigation | view`
+(`apps/desktop/src/lib/keybinds/actions.ts:12`) — and
+`apps/desktop/src/app/settings/keybind-settings.tsx:181-190` iterates `KEYBIND_CATEGORIES` and
+filters `action.category === category`, so a contribution outside the union renders in no section and
+is reachable only by typing a search term. The category is therefore `session`: the action switches a
+session's mode, where `view` is the catch-all for layout and appearance (`actions.ts:18-19`).
+
+Two consequences the review found: F3's "bind `writable` to a key of your own" has no route without
+the panel, and the milestone's Exit names a heading that never exists. The architecture line and the
+Exit wording belong to the architect — see the bounce below — so this ticket is blocked on
+architecture v2 and must not be implemented before it lands.
+
+**Acceptance**
+
+A1. `desktop/plugin.js` sets `category: 'session'` on the keybind contributions and no longer contains the string `Read-only guard`.
+A2. A test in `tests/test_desktop_contract.py` fails when any contributed keybind category is outside the host's `KeybindCategory` union, read from the SDK barrel, and skips with a stated reason when the SDK sources are absent.
+A3. `README.md` names the same heading the code uses, so a reader who opens Settings finds the rows under that name.
+A4. The gate passes and the full suite is green — 208 tests or more.
+
+**Test plan**
+
+- `tests/test_desktop_contract.py::test_every_keybind_category_is_one_the_host_offers` fails first, and names `Read-only guard` in its failure message.
+- `tests/test_readme.py::test_the_keyboard_shortcuts_section_names_the_live_category` fails first against the old wording.
+
+#### Bounce
+
+```bounce
+type: BOUNCE_ARCH
+from: pm
+to: architect
+note: architecture 1 §3 fixes category 'Read-only guard', which is outside the host's KeybindCategory union (actions.ts:12), and milestone 02's Exit names the same string as a Settings heading; both need architecture v2 before T006 can satisfy A1
+```
