@@ -9,3 +9,9 @@ Rebinding is the host's Settings UI, so the plugin keeps no binding store of its
 store would disagree with the one the user edits. Rejected: a `keybinds:` entry in
 `config_schema` (two sources of truth), and a plugin-rendered shortcut editor (the host already
 has one).
+
+## 2026-10-29 — T002: the plan binding
+
+Plan ships on `mod+alt+p`. The table is the only place a binding is written, so the two bound
+modes cannot drift apart; `mod+alt` is the unused-letter namespace in Hermes (only `v`, `t` and
+`n` are taken) and in GNOME (only arrows, Tab and Escape).

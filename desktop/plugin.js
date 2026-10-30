@@ -56,7 +56,8 @@ const TONES = {
  * a keystroke the user should choose (D7).
  */
 const KEYBINDS = [
-  { id: 'readonly-guard.readonly', mode: 'readonly', label: 'Set this chat to read-only', defaults: ['mod+alt+r'] }
+  { id: 'readonly-guard.readonly', mode: 'readonly', label: 'Set this chat to read-only', defaults: ['mod+alt+r'] },
+  { id: 'readonly-guard.plan', mode: 'plan', label: 'Set this chat to plan', defaults: ['mod+alt+p'] }
 ]
 
 // Bound in register(ctx): ctx.rest is the only door to our own backend.

@@ -238,6 +238,13 @@ class TestKeybinds(unittest.TestCase):
         self.assertEqual(by_mode["readonly"]["id"], "readonly-guard.readonly")
         self.assertEqual(by_mode["readonly"]["defaults"], ["mod+alt+r"])
 
+    def test_the_plan_keybind_is_registered_with_its_default(self):
+        by_mode = {row["mode"]: row for row in keybinds()}
+        self.assertIn("plan", by_mode)
+        self.assertEqual(by_mode["plan"]["id"], "readonly-guard.plan")
+        self.assertEqual(by_mode["plan"]["defaults"], ["mod+alt+p"])
+        self.assertNotEqual(by_mode["plan"]["defaults"], by_mode["readonly"]["defaults"])
+
     def test_the_keybind_area_is_an_sdk_constant(self):
         """Same trap as the palette: a literal area id registers and never appears."""
         self.assertIn("KEYBINDS_AREA", SOURCE)
