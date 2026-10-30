@@ -25,6 +25,7 @@ SECTIONS = [
     "## Install",
     "## The three modes",
     "## Switching it",
+    "## Keyboard shortcuts",
     "## The default for new sessions",
     "## What it does not protect against",
     "## Troubleshooting",
@@ -53,6 +54,14 @@ class TestStructure(unittest.TestCase):
         install = TEXT.split("## Install", 1)[1].split("\n## ", 1)[0]
         self.assertIn(f"hermes plugins install {repo}", install)
         self.assertIn("hermes plugins enable readonly-guard", install)
+
+    def test_the_keyboard_shortcuts_section_scopes_itself_to_the_desktop_app(self):
+        """The registry is the desktop renderer's; claiming it elsewhere would be false."""
+        section = TEXT.split("## Keyboard shortcuts", 1)[1].split("\n## ", 1)[0]
+        self.assertIn("Desktop app", section)
+        for surface in ("CLI", "TUI", "Gateway", "browser"):
+            self.assertIn(surface, section, f"{surface} is not named as unsupported")
+        self.assertIn("/readonly", section, "the fallback command is not named")
 
     def test_the_banner_is_the_first_image_and_sits_above_the_prose(self):
         """One image, at the top, pointing at this repository's own file.

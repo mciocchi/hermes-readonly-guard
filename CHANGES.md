@@ -32,3 +32,11 @@ settings it had, and the three contribution ids are literal strings.
 
 Rejected: storing bindings in the plugin so the CLI could read them too — the CLI has no keybind
 registry, and a second store would go stale the first time someone rebinds in Settings.
+
+## 2026-10-29 — T005: the README says where the keybinds work
+
+A `## Keyboard shortcuts` section lists the three actions and a table that names the surfaces
+without keybinds — CLI/TUI, gateway, browser — each pointing at `/readonly`.
+
+Rejected: a one-line note under the modes table. A user who presses a key in a terminal needs the
+answer where they look for the feature, not in a footnote three sections away.

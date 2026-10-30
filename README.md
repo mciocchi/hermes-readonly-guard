@@ -100,6 +100,34 @@ default for new sessions, the writable expiry when that setting is on, the sessi
 the path of the state file. A lapsed lease shows as `readonly` here, because that is what the
 guard will enforce.
 
+## Keyboard shortcuts
+
+In the **Desktop app** the guard ships two keybinds and leaves the third for you to bind:
+
+| Action | Default |
+|---|---|
+| Read-only for this chat | `Ctrl+Alt+R` (`⌘⌥R` on macOS) |
+| Plan for this chat | `Ctrl+Alt+P` (`⌘⌥P` on macOS) |
+| Writable for this chat | unbound — bind it yourself |
+
+All three appear in **Settings → Keybinds** under *Read-only guard*, where you can rebind them;
+the defaults are only the starting point. They fire while the Hermes window has focus, never
+system-wide, and a key pressed with no chat focused does nothing but tell you so.
+
+### Where the keybinds do not work
+
+The keybind registry belongs to the Desktop app's plugin SDK, so nothing outside that window can
+bind these actions:
+
+| Surface | Keybinds | What to do instead |
+|---|---|---|
+| Desktop app | yes | — |
+| CLI and TUI | no — the keymap is fixed and shared with the classic CLI | `/readonly readonly`, `/readonly plan`, `/readonly writable` |
+| Gateway sessions | no — there is no keyboard | `/readonly …` as a slash command |
+| A browser client | no — it has no plugin SDK bridge | `/readonly …` as a slash command |
+
+`/readonly` is the same switch on every surface; the hotkeys are a shortcut for one of them.
+
 ## The default for new sessions
 
 `default_mode` decides what a session starts as. Set it in Settings → Plugins (the form
