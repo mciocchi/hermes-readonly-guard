@@ -1,5 +1,17 @@
 # Changes
 
+## 2026-10-30 — T007: the dashboard reports the configured default
+
+`GET /state` answered the constant `readonly` whatever `config.yaml` said. The dashboard half
+imports `settings` as a top-level module (it is loaded standalone, not as a package) while
+`register()` binds the config reader on the package-relative module: two module objects, two
+`_reader`s, and the dashboard's stayed `None`, so `default_mode()` fell back to the constant. With
+`default_mode: plan` configured, the guard enforced plan and the chip lit read-only.
+
+It now binds its own reader over Hermes' `plugin_settings_fields` — schema plus current values,
+imported lazily so a bare interpreter still imports and reports `readonly` / 30. `settings.py`
+keeps the only copy of the validation: a malformed value still reads as `readonly`.
+
 ## 2026-10-29 — T001: the keybind registry and the read-only binding
 
 `desktop/plugin.js` now contributes a `KEYBINDS_AREA` clause, so the mode switch has a keyboard

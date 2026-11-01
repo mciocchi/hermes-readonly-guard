@@ -31,7 +31,7 @@ feature: F5
 priority: P0
 order: 1
 effort: 2
-status: todo
+status: done
 depends_on: []
 files: [dashboard/plugin_api.py, tests/test_dashboard_api.py]
 gate: python -m unittest discover -s tests -t tests -p "test_dashboard_api.py"

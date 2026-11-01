@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, Query
 
@@ -30,13 +31,44 @@ _PLUGIN_DIR = Path(__file__).resolve().parents[1]
 if str(_PLUGIN_DIR) not in sys.path:
     sys.path.insert(0, str(_PLUGIN_DIR))
 
-from settings import default_mode, writable_expiry_minutes  # noqa: E402
+from settings import default_mode, set_reader, writable_expiry_minutes  # noqa: E402
 from state import MODES, next_mode, set_session_mode, status  # noqa: E402
 
 router = APIRouter()
 
 #: Registry id, and therefore the key under ``plugins.entries.<id>.settings``.
 PLUGIN_ID = "readonly-guard"
+
+
+def _plugin_fields() -> list[dict]:
+    """This plugin's declared settings and their current values, from Hermes itself.
+
+    Imported lazily, like :func:`_write_setting`'s writer: the dashboard can be mounted in a
+    process that has no Hermes on ``sys.path``, and this module must still import there.
+    """
+    from hermes_cli.plugins_settings import plugin_settings_fields
+    return plugin_settings_fields(PLUGIN_ID, _PLUGIN_DIR)
+
+
+def _read_setting(key: str, fallback: Any) -> Any:
+    """``ctx.get_config``'s job, for a process that has no plugin context.
+
+    The agent half binds a reader from ``register()``, on the *package-relative* ``settings``
+    module. This half imports ``settings`` top-level (it is not loaded as a package), which is
+    a different module object, so that reader never reached it and the constant default won:
+    with ``default_mode: plan`` configured, ``GET /state`` answered ``readonly`` (01-T007).
+    """
+    try:
+        fields = _plugin_fields()
+    except ImportError:
+        return fallback  # a bare interpreter: the restrictive constant wins
+    for field in fields:
+        if field.get("key") == key and "value" in field:
+            return field["value"]
+    return fallback
+
+
+set_reader(_read_setting)
 
 
 def _payload(session: str = "") -> dict:

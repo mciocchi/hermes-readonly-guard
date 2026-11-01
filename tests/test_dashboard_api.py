@@ -158,5 +158,75 @@ class TestPost(ApiCase):
         self.assertEqual(payload["mode"], "readonly")
 
 
+class TestTheConfiguredDefault(ApiCase):
+    """Report what the config says, not the constant (ticket 01-T007, invariant I5).
+
+    `GET /state` is what the chip lights. Reporting `readonly` while the guard enforces
+    `plan` tells the user they may write when they may not.
+
+    The read lives behind `_plugin_fields`, the same seam style as `_write_setting`:
+    Hermes' own `plugin_settings_fields` needs a Hermes interpreter, and what these tests
+    own is that the payload is built from it, and that `settings.py` still validates.
+    """
+
+    PLAN = [
+        {"key": "default_mode", "value": "plan"},
+        {"key": "writable_expiry_minutes", "value": 30},
+    ]
+
+    def test_get_without_a_session_reports_the_configured_default(self):
+        self.api._plugin_fields = lambda: self.PLAN
+        payload = self.client.get("/state").json()
+        self.assertEqual(payload["mode"], "plan")
+        self.assertEqual(payload["default"], "plan")
+        self.assertEqual(payload["source"], "default")
+
+    def test_get_for_a_session_with_no_entry_reports_the_configured_default(self):
+        self.api._plugin_fields = lambda: self.PLAN
+        payload = self.client.get("/state", params={"session": "never-seen"}).json()
+        self.assertEqual(payload["mode"], "plan")
+        self.assertEqual(payload["source"], "default")
+
+    def test_a_configured_zero_expiry_is_reported(self):
+        self.api._plugin_fields = lambda: [
+            {"key": "default_mode", "value": "readonly"},
+            {"key": "writable_expiry_minutes", "value": 0},
+        ]
+        self.assertEqual(self.client.get("/state").json()["expiry_minutes"], 0)
+        state.set_session_mode("s1", "writable", source="test")
+        payload = self.client.get("/state", params={"session": "s1"}).json()
+        self.assertIsNone(payload["expires_in"], "0 means never expires, not 'expired'")
+
+    def test_the_reported_default_matches_the_mode_the_guard_enforces(self):
+        """I5: one payload field and one guard decision, read from the same config."""
+        self.api._plugin_fields = lambda: self.PLAN
+        guard_settings = load_submodule("settings")
+        self.addCleanup(guard_settings.set_reader, None)
+        guard_settings.set_reader(
+            lambda key, default: "plan" if key == "default_mode" else default
+        )
+        payload = self.client.get("/state", params={"session": "never-seen"}).json()
+        self.assertEqual(payload["mode"], guard_settings.default_mode())
+
+    def test_a_malformed_value_still_reads_as_readonly(self):
+        """`settings.py` keeps the only copy of the validation: a typo tightens."""
+        self.api._plugin_fields = lambda: [
+            {"key": "default_mode", "value": "yolo"},
+            {"key": "writable_expiry_minutes", "value": -1},
+        ]
+        payload = self.client.get("/state").json()
+        self.assertEqual(payload["default"], "readonly")
+        self.assertEqual(payload["expiry_minutes"], 30)
+
+    def test_the_reader_falls_back_when_hermes_is_not_importable(self):
+        def no_hermes():
+            raise ImportError("no hermes_cli on this interpreter")
+
+        self.api._plugin_fields = no_hermes
+        payload = self.client.get("/state").json()
+        self.assertEqual(payload["default"], "readonly")
+        self.assertEqual(payload["expiry_minutes"], 30)
+
+
 if __name__ == "__main__":
     unittest.main()
