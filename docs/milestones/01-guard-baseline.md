@@ -82,3 +82,11 @@ A5. For a session with no entry, the mode `GET /state` reports equals the mode t
 - `tests/test_dashboard_api.py::test_a_configured_zero_expiry_is_reported` fails first: 30 is reported instead of 0.
 - `tests/test_dashboard_api.py::test_the_reported_default_matches_the_mode_the_guard_enforces` fails first.
 - `tests/test_dashboard_api.py::test_the_module_imports_without_hermes_on_the_path` is a pin, green before the change: the lazy import must not turn an absent Hermes into an import error.
+
+#### Review
+
+```review
+attempt: 1
+verdict: PASS
+sha: 1f9a9b9
+```
