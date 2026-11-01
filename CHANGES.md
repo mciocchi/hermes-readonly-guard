@@ -51,3 +51,15 @@ Why: the Settings panel iterates only the union's members, so the old value regi
 appeared in no section — reachable only by typing a search term, which left "bind `writable` to a
 key of your own" with no route. Rejected: `view`, which would render but is the host's catch-all
 for layout and appearance, and a plugin-rendered shortcut editor.
+
+## 2026-10-30 — 3.7: keyboard control
+
+The Desktop app now ships three keybind contributions — `Ctrl+Alt+R` read-only, `Ctrl+Alt+P` plan,
+`writable` unbound — registered in the host's keybind registry under the `session` category, so
+they appear in Settings → Keybinds and are rebindable there.
+
+Rejected: a plugin-owned binding store (the host already persists rebinds, and two stores
+disagree), and binding `writable` by default (one keystroke that arms full write access should be
+chosen, not inherited). The category is `session` rather than an invented label because the panel
+renders only the five values the host enumerates — an invented one registers, fires, and shows
+nowhere.
