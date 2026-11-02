@@ -47,12 +47,13 @@ READERS: dict[str, frozenset[str]] = {
     "readlink": frozenset(),
     "cut": frozenset(),
     "tr": frozenset(),
-    "sort": frozenset({"-o", "--output"}),
+    "sort": frozenset({"-o", "--output", "--compress-program"}),   # runs a compressor
     "nl": frozenset(),
     "column": frozenset(),
     "diff": frozenset(),
     "grep": frozenset(),
-    "rg": frozenset({"--pre", "--pre-glob", "-z", "--search-zip"}),  # both spawn a program
+    "rg": frozenset({"--pre", "--pre-glob", "-z", "--search-zip",    # all spawn a program
+                     "--hostname-bin"}),
     "jq": frozenset(),
 }
 
@@ -125,6 +126,20 @@ def _flag(token: str) -> str:
     return token.split("=", 1)[0]
 
 
+def _denied_flag(token: str, denied: frozenset[str]) -> str | None:
+    """The denied flag *token* spells, if any.
+
+    GNU tools accept any unambiguous prefix of a long option (`--compress-prog`) and
+    bundle short flags (`-uo out`), so an exact match alone lets both spellings through.
+    """
+    if token.startswith("--") and len(token) > 2:
+        flag = _flag(token)
+        return next((d for d in sorted(denied) if d.startswith(flag)), None)
+    if token.startswith("-") and len(token) > 1:
+        return next((f"-{c}" for c in token[1:] if f"-{c}" in denied), None)
+    return None
+
+
 def probe_refusal(args: object) -> str | None:
     """None when *args* is a probe command, else a one-line reason it is not."""
     if not isinstance(args, dict):
@@ -149,7 +164,9 @@ def probe_refusal(args: object) -> str | None:
     for token in tokens:
         if token and set(token) <= _OPERATOR_CHARS:
             return f"shell operator {token!r} is not allowed — one command, no composition"
-        if "`" in token:
+        # Quotes are gone by now, and `/bin/sh` still expands `$(…)`, `${…}` and
+        # backticks inside double quotes: `cat "$(cmd)"` is one token here.
+        if "`" in token or "$(" in token or "${" in token:
             return "command substitution is not allowed"
     program, rest = tokens[0], tokens[1:]
     if program == "find":
@@ -160,8 +177,9 @@ def probe_refusal(args: object) -> str | None:
     if denied is None:
         return f"{program!r} is not a probe command"
     for token in rest:
-        if _flag(token) in denied:
-            return f"{program} {_flag(token)} is not read-only"
+        flag = _denied_flag(token, denied)
+        if flag is not None:
+            return f"{program} {flag} is not read-only"
     return None
 
 
