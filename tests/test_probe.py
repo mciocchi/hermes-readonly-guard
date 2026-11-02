@@ -94,6 +94,21 @@ class TestShellComposition(ProbeTestCase):
         for command in ("git log $(rm -rf build)", "cat `rm -rf build`", "ls $(whoami)"):
             self.assertRefused(command)
 
+    def test_substitution_inside_double_quotes_is_refused(self):
+        # The shell expands these inside double quotes, where shlex keeps one token.
+        for command in ('cat "$(touch x)"', 'ls "a$(touch x)b"', 'cat "${x:=y}"', 'cat "`touch x`"'):
+            self.assertRefused(command, "substitution")
+
+    def test_program_running_flags_are_refused(self):
+        for command in (
+            "sort --compress-program=sh in.txt",
+            "sort --compress-prog=sh in.txt",      # GNU takes any unambiguous prefix
+            "sort -uo out.txt in.txt",             # bundled short flags
+            "rg --hostname-bin=sh foo .",
+            "rg -iz foo .",
+        ):
+            self.assertRefused(command, "not read-only")
+
     def test_newlines_are_refused(self):
         self.assertRefused("git log\nrm -rf build", "multiple lines")
         self.assertRefused("git log\rrm -rf build", "multiple lines")
