@@ -99,7 +99,7 @@ feature: F1
 priority: P0
 order: 2
 effort: 2
-status: review
+status: done
 depends_on: []
 files: [probe.py, tests/test_probe.py]
 gate: python -m unittest discover -s tests -t tests
@@ -136,3 +136,12 @@ A5. The full suite passes with no test that was green before turning red, and `P
 - `tests/test_probe.py::test_a_parameter_expansion_is_refused` fails first: `cat "${HOME}/notes"` is admitted today.
 - `tests/test_probe.py::test_a_quoted_literal_is_refused_too` fails first: `cat '$(x)'` is admitted today.
 - `tests/test_probe.py::test_a_bare_dollar_sign_is_still_allowed` is a pin, green before the change.
+
+#### Review
+
+```review
+attempt: 1
+verdict: PASS
+sha: fa10a8c
+note: gate parent-run at fa10a8c (219 tests, OK); the reviewer's mutation probes were blocked by its read-only session
+```
