@@ -5,3 +5,7 @@ __pycache__/
 # The mode table belongs in HERMES_HOME. A run with HERMES_HOME mis-set would otherwise
 # put this machine's session modes in the repository.
 *.state
+
+# The agent's per-workspace artifacts: a plan names absolute paths by design, and none of
+# it is part of the published plugin.
+.hermes/

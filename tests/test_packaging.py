@@ -145,7 +145,9 @@ class TestNoMachineSpecificPaths(unittest.TestCase):
         offenders = []
         for path in sorted(PLUGIN_DIR.rglob("*")):
             parts = set(path.parts)
-            if not path.is_file() or "__pycache__" in parts or ".git" in parts:
+            # `.hermes` is the agent's workspace directory: a plan names absolute paths by
+            # design, and nothing under it is part of the published plugin.
+            if not path.is_file() or parts & {"__pycache__", ".git", ".hermes"}:
                 continue
             if path.suffix.lower() not in TEXT_SUFFIXES:
                 continue
