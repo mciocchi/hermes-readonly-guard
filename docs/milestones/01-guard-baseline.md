@@ -99,7 +99,7 @@ feature: F1
 priority: P0
 order: 2
 effort: 2
-status: in_progress
+status: done
 depends_on: []
 files: [probe.py, tests/test_probe.py, README.md]
 gate: python -m unittest discover -s tests -t tests
@@ -157,8 +157,8 @@ A6. No token carrying a `$` the shell would expand is admitted: `cat $HOME/notes
 #### Review
 
 ```review
-attempt: 2
-verdict: FAIL_CODE
-sha: fa10a8c
-note: supersedes the attempt-1 pass: a bare $NAME is admitted, so `git log $IFS--output=FILE` writes a file in readonly
+attempt: 3
+verdict: PASS
+sha: 4ed4f4e
+note: gate and mutation probes parent-run at 4ed4f4e (222 tests, OK); the reviewer's session was read-only under the guard it reviewed
 ```
