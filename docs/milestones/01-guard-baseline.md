@@ -130,6 +130,11 @@ backslashed form, because the lexer cannot tell `'\$HOME'` from `\\$HOME`; a tra
 literal and `[$]` is how a literal dollar is written. The cost is stated: `cat $HOME/notes` and
 `rg 'a$b' .` are refused.
 
+Glob expansion is a separate, pre-existing class and is not in this ticket: a file literally named
+`--output=x` in the working directory could still inject a flag through `git log *`. Closing it
+means deciding whether every unquoted `*` is refused, which breaks legitimate patterns, so it
+belongs in its own ticket rather than being smuggled into this rule.
+
 **Acceptance**
 
 A1. `cat "$(cmd)"` and `ls "$(pwd)"` are refused with a reason naming command substitution; `cat $(cmd)` is refused too, by the operator check that already catches its bare `(`.
