@@ -99,7 +99,7 @@ feature: F1
 priority: P0
 order: 2
 effort: 2
-status: done
+status: in_progress
 depends_on: []
 files: [probe.py, tests/test_probe.py]
 gate: python -m unittest discover -s tests -t tests
@@ -140,8 +140,8 @@ A5. The full suite passes with no test that was green before turning red, and `P
 #### Review
 
 ```review
-attempt: 1
-verdict: PASS
+attempt: 2
+verdict: FAIL_CODE
 sha: fa10a8c
-note: gate parent-run at fa10a8c (219 tests, OK); the reviewer's mutation probes were blocked by its read-only session
+note: supersedes the attempt-1 pass: a bare $NAME is admitted, so `git log $IFS--output=FILE` writes a file in readonly
 ```
