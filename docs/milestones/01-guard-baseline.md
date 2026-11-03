@@ -101,7 +101,7 @@ order: 2
 effort: 2
 status: in_progress
 depends_on: []
-files: [probe.py, tests/test_probe.py]
+files: [probe.py, tests/test_probe.py, README.md]
 gate: python -m unittest discover -s tests -t tests
 ```
 
@@ -122,20 +122,32 @@ the cost stated: in `readonly`, searching for a literal `$(` is refused (`rg '\$
 The reviewer's branch implements this and the flag fix (`hermes-readonly-guard#2`). The acceptance
 below is behaviour, so it holds whether the code is written here or taken from that branch.
 
+The attempt-2 review of `fa10a8c` found the class this rule missed: bare `$NAME` is expanded before
+the program runs and `IFS` splits the result, so `git log $IFS--output=FILE` reaches git as two
+arguments and writes a file while the denied flag is nowhere in the token. Refusing only `$(`, `${`
+and the backtick left that open. The rule now refuses any `$` the shell would expand, including the
+backslashed form, because the lexer cannot tell `'\$HOME'` from `\\$HOME`; a trailing `$` stays
+literal and `[$]` is how a literal dollar is written. The cost is stated: `cat $HOME/notes` and
+`rg 'a$b' .` are refused.
+
 **Acceptance**
 
 A1. `cat "$(cmd)"` and `ls "$(pwd)"` are refused with a reason naming command substitution; `cat $(cmd)` is refused too, by the operator check that already catches its bare `(`.
 A2. `cat "${HOME}/notes"` and `ls "${PWD}"` are refused the same way.
 A3. `cat '$(not-run)'` is refused too: the refusal runs on lexed tokens, so quoting cannot exempt a literal.
-A4. A `$` that starts neither a substitution nor an expansion still passes: `rg -n 'cost$' README.md`, `rg '\$HOME' .`, `tr -d '$'`.
+A4. A `$` at the end of a token still passes: `rg -n 'cost$' README.md` and `tr -d '$'` are admitted, and `rg '[$]HOME' .` is too; a backslashed `\$` is not (A6).
 A5. The full suite passes with no test that was green before turning red, and `PROBE_PROGRAMS` is unchanged at 29 names.
+A6. No token carrying a `$` the shell would expand is admitted: `cat $HOME/notes`, `ls $PWD`, `git log $IFS--output=/tmp/x`, `rg $IFS--pre=id pattern .` and `rg '\$HOME' .` are refused, because `shlex` gives `'\$HOME'` and `\\$HOME` the same token while the second expands unquoted; and `README.md` names `${…}`, `$NAME` and `\$` among the refused expansion.
 
 **Test plan**
 
 - `tests/test_probe.py::test_command_substitution_inside_double_quotes_is_refused` fails first: `cat "$(cmd)"` is admitted today.
 - `tests/test_probe.py::test_a_parameter_expansion_is_refused` fails first: `cat "${HOME}/notes"` is admitted today.
 - `tests/test_probe.py::test_a_quoted_literal_is_refused_too` fails first: `cat '$(x)'` is admitted today.
-- `tests/test_probe.py::test_a_bare_dollar_sign_is_still_allowed` is a pin, green before the change.
+- `tests/test_probe.py::test_a_bare_dollar_sign_is_still_allowed` is the pin: its `\$HOME` case moves to `[$]HOME`, and it stays green.
+- `tests/test_probe.py::test_a_bare_parameter_expansion_is_refused` fails first: `cat $HOME/notes` is admitted today.
+- `tests/test_probe.py::test_a_word_splitting_expansion_cannot_smuggle_a_denied_flag` fails first: `git log $IFS--output=/tmp/x` is admitted and writes a file.
+- `tests/test_probe.py::test_a_backslash_before_the_dollar_does_not_exempt_it` fails first: `rg '\$HOME' .` is admitted today.
 
 #### Review
 
