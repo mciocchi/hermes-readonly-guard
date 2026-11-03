@@ -90,3 +90,49 @@ attempt: 1
 verdict: PASS
 sha: 1f9a9b9
 ```
+
+### T008: The probe refuses command substitution in any quoting
+
+```ticket
+id: T008
+feature: F1
+priority: P0
+order: 2
+effort: 2
+status: todo
+depends_on: []
+files: [probe.py, tests/test_probe.py]
+gate: python -m unittest discover -s tests -t tests
+```
+
+**Context.** Architecture 2 §2 (Probe filter) and §4 invariant I1, against the claim README line
+178 already makes. The catalog review of 3.7 (`a8c518b1`) found that the token loop at
+`probe.py:149-153` refuses operator-only tokens and backticks, but `shlex` with `posix=True` strips
+quoting before the loop sees a token: `cat "$(cmd)"` arrives as the single token `$(cmd)`. It is
+not all operator characters (`_OPERATOR_CHARS` is `();<>|&`, so `$` is not one) and carries no
+backtick, so it is admitted, and `/bin/sh` then runs `cmd`. `${…}` is the same hole with no
+parenthesis at all: `cat "${HOME}/notes"` is admitted today. The unquoted forms are caught only by
+accident, because the bare `(` is lexed as an operator token of its own.
+
+Refuse any token containing `$(`, `${` or a backtick, in the existing token loop, so no second
+parse is introduced. The check cannot tell a literal from a substitution once quoting is gone:
+`cat '$(x)'` is refused too. That is the conservative direction and A3 pins it deliberately, with
+the cost stated: in `readonly`, searching for a literal `$(` is refused (`rg '\$\(' .`).
+
+The reviewer's branch implements this and the flag fix (`hermes-readonly-guard#2`). The acceptance
+below is behaviour, so it holds whether the code is written here or taken from that branch.
+
+**Acceptance**
+
+A1. `cat "$(cmd)"` and `ls "$(pwd)"` are refused with a reason naming command substitution; `cat $(cmd)` is refused too, by the operator check that already catches its bare `(`.
+A2. `cat "${HOME}/notes"` and `ls "${PWD}"` are refused the same way.
+A3. `cat '$(not-run)'` is refused too: the refusal runs on lexed tokens, so quoting cannot exempt a literal.
+A4. A `$` that starts neither a substitution nor an expansion still passes: `rg -n 'cost$' README.md`, `rg '\$HOME' .`, `tr -d '$'`.
+A5. The full suite passes with no test that was green before turning red, and `PROBE_PROGRAMS` is unchanged at 29 names.
+
+**Test plan**
+
+- `tests/test_probe.py::test_command_substitution_inside_double_quotes_is_refused` fails first: `cat "$(cmd)"` is admitted today.
+- `tests/test_probe.py::test_a_parameter_expansion_is_refused` fails first: `cat "${HOME}/notes"` is admitted today.
+- `tests/test_probe.py::test_a_quoted_literal_is_refused_too` fails first: `cat '$(x)'` is admitted today.
+- `tests/test_probe.py::test_a_bare_dollar_sign_is_still_allowed` is a pin, green before the change.
