@@ -94,6 +94,36 @@ class TestShellComposition(ProbeTestCase):
         for command in ("git log $(rm -rf build)", "cat `rm -rf build`", "ls $(whoami)"):
             self.assertRefused(command)
 
+    def test_command_substitution_inside_double_quotes_is_refused(self):
+        """Quotes are gone before the check runs, so the token itself must be refused.
+
+        The unquoted form is refused as well, but by the operator check: shlex splits the
+        bare `$(` into a `$` token and a `(` operator token there, so it never reaches the
+        substitution branch. Both are asserted: the quoted form is the hole, and the
+        unquoted form is the accident that hid it.
+        """
+        for command in ('cat "$(cmd)"', 'ls "$(pwd)"'):
+            self.assertRefused(command, "command substitution")
+        self.assertRefused("cat $(cmd)")
+
+    def test_a_parameter_expansion_is_refused(self):
+        """`${…}` reaches the shell without a parenthesis to trip the operator check."""
+        for command in ('cat "${HOME}/notes"', 'ls "${PWD}"'):
+            self.assertRefused(command, "command substitution")
+
+    def test_a_quoted_literal_is_refused_too(self):
+        """A single-quoted marker is refused deliberately: the lexer keeps no quote state.
+
+        The cost is a real command: `rg '\\$\\(' .` is refused in readonly. The guard errs
+        towards refusing a useful command, and this test is where that is pinned.
+        """
+        self.assertRefused("cat '$(not-run)'", "command substitution")
+
+    def test_a_bare_dollar_sign_is_still_allowed(self):
+        """The refusal is about substitution syntax, never about the dollar sign."""
+        for command in ("rg -n 'cost$' README.md", "rg '\\$HOME' .", "tr -d '$'"):
+            self.assertAllowed(command)
+
     def test_newlines_are_refused(self):
         self.assertRefused("git log\nrm -rf build", "multiple lines")
         self.assertRefused("git log\rrm -rf build", "multiple lines")

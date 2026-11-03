@@ -1,5 +1,22 @@
 # Changes
 
+## 2026-11-03 — T008: the probe refuses command substitution in any quoting
+
+`probe_refusal` refused a token that was all shell operators, and a token carrying a backtick,
+but `shlex` with `posix=True` removes quoting before the loop sees a token: `cat "$(cmd)"`
+arrived as the single token `$(cmd)`, passed both checks, and `/bin/sh` then ran `cmd`. `${…}`
+was the same hole with no parenthesis at all, and the unquoted `$(…)` forms were caught only by
+accident, because the bare `(` is lexed as an operator token of its own.
+
+A token is now refused when it carries `$(`, `${` or a backtick, in the loop that already
+decided composition. The check runs after lexing, so it cannot tell a literal from a
+substitution: `cat '$(x)'` is refused too, and searching for a literal `$(` in readonly is
+refused with it. Rejected: scanning the raw command string before lexing (the same blind spot,
+plus a second parser to keep in step); lexing with `posix=False` so the quotes stay visible
+(every other check in the function compares the unquoted token, so that changes every refusal in
+the table); and refusing only a token that starts with a marker (it misses `x$(cmd)`, which the
+shell still expands).
+
 ## 2026-10-30 — T007: the dashboard reports the configured default
 
 `GET /state` answered the constant `readonly` whatever `config.yaml` said. The dashboard half

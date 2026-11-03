@@ -119,6 +119,20 @@ GIT_GLOBAL_DENIED: frozenset[str] = frozenset(
 #: program added above cannot go missing from the message the user reads.
 PROBE_PROGRAMS: frozenset[str] = frozenset(READERS) | {"find", "git"}
 
+#: Everything a shell would expand before the program starts. `shlex` has already removed
+#: the quoting by the time a token is checked, so no token can be exempted by writing it in
+#: single quotes: `cat '$(x)'` is refused exactly like `cat "$(x)"`. That is deliberate: the
+#: guard refuses a useful command before it admits a way to run one.
+_SUBSTITUTIONS: tuple[str, ...] = ("$(", "${", "`")
+
+
+def _substitution(token: str) -> str | None:
+    """The substitution marker in *token*, or None when it carries none."""
+    for marker in _SUBSTITUTIONS:
+        if marker in token:
+            return marker
+    return None
+
 
 def _flag(token: str) -> str:
     """A token's flag part: `--output=x` -> `--output`."""
@@ -149,8 +163,9 @@ def probe_refusal(args: object) -> str | None:
     for token in tokens:
         if token and set(token) <= _OPERATOR_CHARS:
             return f"shell operator {token!r} is not allowed — one command, no composition"
-        if "`" in token:
-            return "command substitution is not allowed"
+        marker = _substitution(token)
+        if marker is not None:
+            return f"command substitution {marker!r} is not allowed"
     program, rest = tokens[0], tokens[1:]
     if program == "find":
         return _refuse_unknown_flags(rest, FIND_FLAGS, "find")
