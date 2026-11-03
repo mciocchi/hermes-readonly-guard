@@ -119,18 +119,29 @@ GIT_GLOBAL_DENIED: frozenset[str] = frozenset(
 #: program added above cannot go missing from the message the user reads.
 PROBE_PROGRAMS: frozenset[str] = frozenset(READERS) | {"find", "git"}
 
-#: Everything a shell would expand before the program starts. `shlex` has already removed
-#: the quoting by the time a token is checked, so no token can be exempted by writing it in
-#: single quotes: `cat '$(x)'` is refused exactly like `cat "$(x)"`. That is deliberate: the
-#: guard refuses a useful command before it admits a way to run one.
+#: Everything a shell expands before the program runs. `$(…)` and `${…}` substitute, a backtick
+#: substitutes, and a bare `$NAME` expands and is then split on `IFS`, which is how
+#: `git log $IFS--output=FILE` writes a file without the denied flag appearing in the token.
+#: `shlex` has already removed the quoting, so `'\$HOME'` (literal) and `\\$HOME` (a backslash,
+#: then an unquoted expansion) arrive as the same token; that is why the backslashed form is
+#: refused too, and why `[$]` is the way to write a literal dollar.
 _SUBSTITUTIONS: tuple[str, ...] = ("$(", "${", "`")
+#: What may follow a `$` for the shell to expand it: a name or digit (tested separately) or one
+#: of these. A `$` followed by anything else, or by nothing, is a literal dollar.
+_EXPANSION_CHARS: frozenset[str] = frozenset("_*@#?!-$")
 
 
-def _substitution(token: str) -> str | None:
-    """The substitution marker in *token*, or None when it carries none."""
+def _expansion(token: str) -> str | None:
+    """The first shell-expanded marker in *token*, or None when it carries none."""
     for marker in _SUBSTITUTIONS:
         if marker in token:
             return marker
+    for index, char in enumerate(token):
+        if char != "$" or not token[index + 1:]:
+            continue
+        following = token[index + 1]
+        if following.isalnum() or following in _EXPANSION_CHARS:
+            return token[index: index + 2]
     return None
 
 
@@ -163,9 +174,10 @@ def probe_refusal(args: object) -> str | None:
     for token in tokens:
         if token and set(token) <= _OPERATOR_CHARS:
             return f"shell operator {token!r} is not allowed — one command, no composition"
-        marker = _substitution(token)
+        marker = _expansion(token)
         if marker is not None:
-            return f"command substitution {marker!r} is not allowed"
+            kind = "command substitution" if marker in _SUBSTITUTIONS else "shell expansion"
+            return f"{kind} {marker!r} is not allowed"
     program, rest = tokens[0], tokens[1:]
     if program == "find":
         return _refuse_unknown_flags(rest, FIND_FLAGS, "find")

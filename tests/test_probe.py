@@ -121,8 +121,31 @@ class TestShellComposition(ProbeTestCase):
 
     def test_a_bare_dollar_sign_is_still_allowed(self):
         """The refusal is about substitution syntax, never about the dollar sign."""
-        for command in ("rg -n 'cost$' README.md", "rg '\\$HOME' .", "tr -d '$'"):
+        for command in ("rg -n 'cost$' README.md", "rg '[$]HOME' .", "tr -d '$'"):
             self.assertAllowed(command)
+
+    def test_a_bare_parameter_expansion_is_refused(self):
+        """`$NAME` is expanded before the program runs, and `IFS` splits the result.
+
+        `$IFS--output=FILE` reaches git as two arguments, so the denied flag never appears
+        in the token the guard checks. Refusing every expansion is the only rule that does
+        not depend on which variables a shell carries.
+        """
+        for command in ("cat $HOME/notes", "ls $PWD", "tr -d $X"):
+            self.assertRefused(command, "shell expansion")
+
+    def test_a_word_splitting_expansion_cannot_smuggle_a_denied_flag(self):
+        for command in ("git log $IFS--output=/tmp/x", "rg $IFS--pre=id pattern ."):
+            self.assertRefused(command, "shell expansion")
+
+    def test_a_backslash_before_the_dollar_does_not_exempt_it(self):
+        """`shlex` gives `'\\$HOME'` and `\\\\$HOME` one token, and the second expands.
+
+        The first is a literal in the shell, so refusing both is the conservative direction:
+        `[$]HOME` is the spelling that survives, and the pin above holds it.
+        """
+        for command in ("rg '\\$HOME' .", "cat \\\\$HOME"):
+            self.assertRefused(command, "shell expansion")
 
     def test_newlines_are_refused(self):
         self.assertRefused("git log\nrm -rf build", "multiple lines")

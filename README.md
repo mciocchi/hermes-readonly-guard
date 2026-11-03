@@ -175,8 +175,9 @@ across those states, so nothing moves as the number changes. A session following
 - **Probes are a speed bump, not a sandbox**, in `readonly` and `plan` alike. Every verdict
   is a string decision about a command a shell will then interpret: one program per call,
   an allowlist of programs, a per-flag policy for `git`, `file`, and `find`, and
-  composition (`;`, `&&`, `|`, `>`, `<`, `$(…)`, backticks, newlines) refused rather than
-  parsed. Anything unrecognised is refused, so a useful command sometimes is too.
+  composition (`;`, `&&`, `|`, `>`, `<`, newlines) and every shell expansion (`$(…)`, `${…}`,
+  `$NAME`, `\$`, backticks) refused rather than parsed; a literal dollar is written `[$]`.
+  Anything unrecognised is refused, so a useful command sometimes is too.
 - **A probe can read anything you can read** — `cat ~/.ssh/id_rsa` is admitted, exactly as
   `read_file` already is. This guard is about writes and execution, not confidentiality.
 - **`writable` really does block nothing**, including `terminal`, `write_file`, and

@@ -8,14 +8,18 @@ arrived as the single token `$(cmd)`, passed both checks, and `/bin/sh` then ran
 was the same hole with no parenthesis at all, and the unquoted `$(…)` forms were caught only by
 accident, because the bare `(` is lexed as an operator token of its own.
 
-A token is now refused when it carries `$(`, `${` or a backtick, in the loop that already
-decided composition. The check runs after lexing, so it cannot tell a literal from a
-substitution: `cat '$(x)'` is refused too, and searching for a literal `$(` in readonly is
-refused with it. Rejected: scanning the raw command string before lexing (the same blind spot,
-plus a second parser to keep in step); lexing with `posix=False` so the quotes stay visible
-(every other check in the function compares the unquoted token, so that changes every refusal in
-the table); and refusing only a token that starts with a marker (it misses `x$(cmd)`, which the
-shell still expands).
+A token is now refused when the shell would expand anything in it: `$(`, `${` and a backtick are
+command substitution, and any other `$` is an expansion. The second was the hole a review found in
+the first fix: `IFS` is a shell constant that splits a word, so `git log $IFS--output=FILE` reached
+git as two arguments and wrote a file while the denied flag was nowhere in the token the guard
+checked. A `$` at the end of a token stays literal; `[$]` is how a literal dollar is written,
+because the backslashed form cannot be exempted: `shlex` gives `'\$HOME'` and `\\$HOME` the same
+token, and only the second expands. The check runs after lexing, so `cat '$(x)'` and `cat
+$HOME/notes` are refused as well. Rejected: scanning the raw command string before lexing (the same
+blind spot, plus a second parser to keep in step); lexing with `posix=False` so the quotes stay
+visible (every other check compares the unquoted token); refusing only a token that starts with a
+marker (it misses `x$IFS--flag`, which still splits); and allowing the expansions whose names look
+harmless (the dangerous one is `IFS`, which every shell carries).
 
 ## 2026-10-30 — T007: the dashboard reports the configured default
 
