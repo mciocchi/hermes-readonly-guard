@@ -9,7 +9,7 @@ satisfies: [I1, I2, I3, I4, I5, I6, I9]
 
 **Goal.** A user can put one session into read-only, plan or writable and watch the guard hold that session to it, with `writable` ending on its own lease.
 
-**Exit.** `python -m unittest discover -s tests -t tests` — 199 tests, `OK`.
+**Exit.** `python -m unittest discover -s tests -t tests` — `OK`, no failures.
 
 **Out of scope.** Keybinds, catalog listing, Windows CI (all delivered before this document existed; the suite is what ratifies them).
 
