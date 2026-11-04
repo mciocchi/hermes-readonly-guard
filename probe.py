@@ -126,13 +126,18 @@ PROBE_PROGRAMS: frozenset[str] = frozenset(READERS) | {"find", "git"}
 #: then an unquoted expansion) arrive as the same token; that is why the backslashed form is
 #: refused too, and why `[$]` is the way to write a literal dollar.
 _SUBSTITUTIONS: tuple[str, ...] = ("$(", "${", "`")
-#: What may follow a `$` for the shell to expand it: a name or digit (tested separately) or one
-#: of these. A `$` followed by anything else, or by nothing, is a literal dollar.
-_EXPANSION_CHARS: frozenset[str] = frozenset("_*@#?!-$")
+#: What a `$` may be followed by for the shell to expand it, once names and digits are handled:
+#: the one-character parameters. A `$` followed by anything else, or by nothing, is literal.
+_EXPANSION_CHARS: frozenset[str] = frozenset("*@#?!-$")
 
 
 def _expansion(token: str) -> str | None:
-    """The first shell-expanded marker in *token*, or None when it carries none."""
+    """The first shell-expanded marker in *token*, or None when it carries none.
+
+    The marker is what the shell would expand: a whole name (`$IFS`, `$HOME`), one digit (`$1`),
+    or two characters for a one-character parameter (`$$`, `$@`). Quoting the first letter only
+    named something the user never typed.
+    """
     for marker in _SUBSTITUTIONS:
         if marker in token:
             return marker
@@ -140,8 +145,13 @@ def _expansion(token: str) -> str | None:
         if char != "$" or not token[index + 1:]:
             continue
         following = token[index + 1]
-        if following.isalnum() or following in _EXPANSION_CHARS:
+        if following.isdigit() or following in _EXPANSION_CHARS:
             return token[index: index + 2]
+        if following.isalpha() or following == "_":
+            end = index + 1
+            while end < len(token) and (token[end].isalnum() or token[end] == "_"):
+                end += 1
+            return token[index:end]
     return None
 
 

@@ -133,14 +133,20 @@ class TestShellComposition(ProbeTestCase):
 
         `$IFS--output=FILE` reaches git as two arguments, so the denied flag never appears
         in the token the guard checks. Refusing every expansion is the only rule that does
-        not depend on which variables a shell carries.
+        not depend on which variables a shell carries. The message names the whole variable,
+        so the refusal says what the shell would have expanded.
         """
-        for command in ("cat $HOME/notes", "ls $PWD", "tr -d $X"):
-            self.assertRefused(command, "shell expansion")
+        expected = {
+            "cat $HOME/notes": "shell expansion '$HOME'",
+            "ls $PWD": "shell expansion '$PWD'",
+            "tr -d $X": "shell expansion '$X'",
+        }
+        for command, reason in expected.items():
+            self.assertRefused(command, reason)
 
     def test_a_word_splitting_expansion_cannot_smuggle_a_denied_flag(self):
         for command in ("git log $IFS--output=/tmp/x", "rg $IFS--pre=id pattern ."):
-            self.assertRefused(command, "shell expansion")
+            self.assertRefused(command, "shell expansion '$IFS'")
 
     def test_a_backslash_before_the_dollar_does_not_exempt_it(self):
         """`shlex` gives `'\\$HOME'` and `\\\\$HOME` one token, and the second expands.
