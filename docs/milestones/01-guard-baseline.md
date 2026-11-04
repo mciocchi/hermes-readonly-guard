@@ -135,6 +135,11 @@ Glob expansion is a separate, pre-existing class and is not in this ticket: a fi
 means deciding whether every unquoted `*` is refused, which breaks legitimate patterns, so it
 belongs in its own ticket rather than being smuggled into this rule.
 
+The attempt-3 review left five prose findings, none blocking; they are fixed after the reviewed sha
+`4ed4f4e` (the last of those commits is `b97b175`), and the refusal now quotes the whole expansion
+(`'$IFS'`) instead of its first letter. The receipt below records the review of `4ed4f4e`, which is
+the code the criteria were judged on.
+
 **Acceptance**
 
 A1. `cat "$(cmd)"` and `ls "$(pwd)"` are refused with a reason naming command substitution; `cat $(cmd)` is refused too, by the operator check that already catches its bare `(`.
