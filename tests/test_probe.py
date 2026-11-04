@@ -120,7 +120,11 @@ class TestShellComposition(ProbeTestCase):
         self.assertRefused("cat '$(not-run)'", "command substitution")
 
     def test_a_bare_dollar_sign_is_still_allowed(self):
-        """The refusal is about substitution syntax, never about the dollar sign."""
+        """A dollar the shell would not expand is allowed: at the end of a token, or `[$]`.
+
+        `ls $PWD` is refused because the shell expands it; these three are literals, so the
+        rule is about expansion, not about the character.
+        """
         for command in ("rg -n 'cost$' README.md", "rg '[$]HOME' .", "tr -d '$'"):
             self.assertAllowed(command)
 

@@ -1,6 +1,6 @@
 # Changes
 
-## 2026-11-03 — T008: the probe refuses command substitution in any quoting
+## 2026-11-03 — T008: the probe refuses every `$` expansion
 
 `probe_refusal` refused a token that was all shell operators, and a token carrying a backtick,
 but `shlex` with `posix=True` removes quoting before the loop sees a token: `cat "$(cmd)"`
@@ -8,7 +8,7 @@ arrived as the single token `$(cmd)`, passed both checks, and `/bin/sh` then ran
 was the same hole with no parenthesis at all, and the unquoted `$(…)` forms were caught only by
 accident, because the bare `(` is lexed as an operator token of its own.
 
-A token is now refused when the shell would expand anything in it: `$(`, `${` and a backtick are
+A token is now refused when it carries a `$` the shell would expand: `$(`, `${` and a backtick are
 command substitution, and any other `$` is an expansion. The second was the hole a review found in
 the first fix: `IFS` is a shell constant that splits a word, so `git log $IFS--output=FILE` reached
 git as two arguments and wrote a file while the denied flag was nowhere in the token the guard
