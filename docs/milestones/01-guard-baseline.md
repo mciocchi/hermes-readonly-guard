@@ -225,3 +225,44 @@ verdict: PASS
 sha: 8d7c6e7
 note: gate and mutations parent-run at 8d7c6e7 (226 OK / 35 OK); the review's medium finding is the git loop, which still exact-matches, so `git grep -nO<prog>` is admitted (pre-existing, outside A1-A5)
 ```
+
+### T010: The probe refuses a git pager flag in a bundle
+
+```ticket
+id: T010
+feature: F1
+priority: P0
+order: 4
+effort: 1
+status: todo
+depends_on: [T009]
+files: [probe.py, tests/test_probe.py]
+gate: python -m unittest discover -s tests -t tests
+```
+
+**Context.** Architecture 2 §2 (Probe filter) and §4 invariant I1. The review of the program-flag
+ticket found this while grading `8d7c6e7`: the matcher that ticket added is wired into the reader
+loop, but `_git_refusal`'s sub-command loop (`probe.py:258-260`) still compares the flag part with
+`in`. `git grep` denies `-O` and `--open-files-in-pager` (`probe.py:78`) because `-O<path>` runs
+that program on the matched file, and the attached form defeats the exact match:
+`git grep -nOcat -e "def _denied_flag" probe.py` is admitted and runs `cat`, and
+`git grep -nO/bin/sh -e x probe.py` would hand the matched file to a shell. The prefix form does
+not apply to this table, because git rejects abbreviated long options, so the bundle and the
+already-refused exact and `=value` forms are the whole spelling set here.
+
+Scope: only the sub-command loop changes. The global loop at `probe.py:239-243` keeps its exact
+match because git parses global options before the sub-command and accepts no bundle spelling
+there; if one exists it is its own ticket. The listing tier (`GIT_LISTINGS` through
+`_refuse_unknown_flags`) is a positive allowlist and stays exact, the way `find` does.
+
+**Acceptance**
+
+A1. `git grep -nOcat -e probe_refusal probe.py` and `git grep -nO/bin/sh -e x probe.py` are refused as not read-only.
+A2. `git grep -O -e probe_refusal probe.py` and `git grep --open-files-in-pager=cat -e x probe.py` stay refused as not read-only.
+A3. `git grep -n -e probe_refusal probe.py`, `git log -p -- probe.py` and `git branch -a` stay admitted.
+A4. The full suite passes with no test that was green before turning red, and `PROBE_PROGRAMS` is unchanged at 29 names.
+
+**Test plan**
+
+- `tests/test_probe.py::test_a_git_pager_flag_is_refused_in_a_bundle` fails first: `git grep -nOcat` is admitted today.
+- `tests/test_probe.py::test_git_grep_and_log_still_read` is a pin, green before the change.
