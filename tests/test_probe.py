@@ -210,6 +210,35 @@ class TestPrograms(ProbeTestCase):
         self.assertRefused("find . -fprint out.txt", "allowlist")
         self.assertRefused("find . -execdir rm {} ;", "operator")
 
+    def test_a_program_running_sort_flag_is_refused_in_every_spelling(self):
+        """GNU takes any unambiguous prefix of a long option, so an exact match misses it."""
+        for command in (
+            "sort --compress-program=/bin/sh in.txt",
+            "sort --compress-prog=/bin/sh in.txt",
+            "sort --compress-program /bin/sh in.txt",
+        ):
+            self.assertRefused(command, "not read-only")
+
+    def test_a_program_running_rg_flag_is_refused_in_every_spelling(self):
+        for command in (
+            "rg --hostname-bin=/bin/sh pattern .",
+            "rg --hostname-b=/bin/sh pattern .",
+        ):
+            self.assertRefused(command, "not read-only")
+
+    def test_a_denied_short_flag_is_caught_in_a_bundle_or_an_attached_value(self):
+        """`-uo out` is `-u -o out`, and `-oout.txt` is `-o out.txt`; both write."""
+        for command in (
+            "sort -uo out.txt in.txt",
+            "sort -oout.txt in.txt",
+            "tree -Bo out.txt",
+        ):
+            self.assertRefused(command, "not read-only")
+
+    def test_bundles_of_allowed_flags_still_pass(self):
+        for command in ("sort -ru in.txt", "ls -la", "du -sh .", "rg -n 'def guard' ."):
+            self.assertAllowed(command)
+
 
 class TestGit(ProbeTestCase):
     def test_read_only_subcommands_are_allowed(self):

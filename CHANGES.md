@@ -1,5 +1,21 @@
 # Changes
 
+## 2026-11-04 — T009: the probe refuses a program-running flag in every spelling
+
+`sort --compress-program=PROG` and `rg --hostname-bin=CMD` both run a program, and neither was in
+the denied flags. Both denials are exact matches on the flag part, and three spellings defeat an
+exact match: GNU abbreviates a long option to any unambiguous prefix (`sort --compress-prog=`),
+short options bundle (`sort -uo out`), and a short option may carry its value attached
+(`sort -oout.txt`). A `$IFS` expansion used to reach the same flags and is refused by the
+substitution rule, so what was left is the literal spellings.
+
+A matcher beside `_flag` now answers whether a token names a denied flag in any of those spellings,
+and the reader loop uses it for every program's denied set, so `file -C` and `tree -o` gained the
+bundle forms with no entry of their own. `find` keeps its positive allowlist: its primaries are
+neither abbreviatable nor bundlable. Rejected: adding the two flags to the sets and leaving the
+matching exact (the next program flag reopens the class), and refusing every token that starts with
+`-` (it refuses `sort -ru`, which writes nothing).
+
 ## 2026-11-03 — T008: the probe refuses every `$` expansion
 
 `probe_refusal` refused a token that was all shell operators, and a token carrying a backtick,

@@ -47,12 +47,12 @@ READERS: dict[str, frozenset[str]] = {
     "readlink": frozenset(),
     "cut": frozenset(),
     "tr": frozenset(),
-    "sort": frozenset({"-o", "--output"}),
+    "sort": frozenset({"-o", "--output", "--compress-program"}),   # writes, and runs a program
     "nl": frozenset(),
     "column": frozenset(),
     "diff": frozenset(),
     "grep": frozenset(),
-    "rg": frozenset({"--pre", "--pre-glob", "-z", "--search-zip"}),  # both spawn a program
+    "rg": frozenset({"--pre", "--pre-glob", "-z", "--search-zip", "--hostname-bin"}),  # all run a program
     "jq": frozenset(),
 }
 
@@ -160,6 +160,28 @@ def _flag(token: str) -> str:
     return token.split("=", 1)[0]
 
 
+def _denied_flag(token: str, denied: frozenset[str]) -> str | None:
+    """The denied flag *token* names, in any spelling its program accepts, or None.
+
+    Three spellings defeat an exact match: a long option may be abbreviated to any unambiguous
+    prefix (`--compress-prog`), short options bundle (`-uo out` is `-u -o out`), and a short
+    option may carry its value attached (`-oout.txt`). Each of them still runs a program.
+    """
+    name = _flag(token)
+    if name in denied:
+        return name
+    if name.startswith("--"):
+        for option in denied:
+            if len(name) > 2 and option.startswith(name):
+                return name
+        return None
+    if name.startswith("-") and len(name) > 1:
+        for char in name[1:]:
+            if "-" + char in denied:
+                return "-" + char
+    return None
+
+
 def probe_refusal(args: object) -> str | None:
     """None when *args* is a probe command, else a one-line reason it is not."""
     if not isinstance(args, dict):
@@ -197,8 +219,9 @@ def probe_refusal(args: object) -> str | None:
     if denied is None:
         return f"{program!r} is not a probe command"
     for token in rest:
-        if _flag(token) in denied:
-            return f"{program} {_flag(token)} is not read-only"
+        hit = _denied_flag(token, denied)
+        if hit is not None:
+            return f"{program} {hit} is not read-only"
     return None
 
 
