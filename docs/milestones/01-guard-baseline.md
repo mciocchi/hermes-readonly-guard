@@ -242,7 +242,7 @@ gate: python -m unittest discover -s tests -t tests
 
 **Context.** Architecture 2 §2 (Probe filter) and §4 invariant I1. The review of the program-flag
 ticket found this while grading `8d7c6e7`: the matcher that ticket added is wired into the reader
-loop, but `_git_refusal`'s sub-command loop (`probe.py:258-260`) still compares the flag part with
+loop, but `_git_refusal`'s sub-command loop (`probe.py:262-266`) still compares the flag part with
 `in`. `git grep` denies `-O` and `--open-files-in-pager` (`probe.py:78`) because `-O<path>` runs
 that program on the matched file, and the attached form defeats the exact match:
 `git grep -nOcat -e "def _denied_flag" probe.py` is admitted and runs `cat`, and
@@ -255,7 +255,7 @@ The bundle rule has one cost: `git grep -ic pattern` is now refused, because the
 `-c` that the loop already refused when it stood alone. `git grep -c` was never admitted, so this
 removes an inconsistency rather than a capability; `git grep -i -n pattern` is unchanged.
 
-Scope: only the sub-command loop changes. The global loop at `probe.py:239-243` keeps its exact
+Scope: only the sub-command loop changes. The global loop at `probe.py:243-247` keeps its exact
 match because git parses global options before the sub-command and accepts no bundle spelling
 there; if one exists it is its own ticket. The listing tier (`GIT_LISTINGS` through
 `_refuse_unknown_flags`) is a positive allowlist and stays exact, the way `find` does.
@@ -263,7 +263,13 @@ there; if one exists it is its own ticket. The listing tier (`GIT_LISTINGS` thro
 The review left three low findings. Two are fixed after the reviewed sha `2d22180` (last of them
 `c1eb6aa`): the global loop now carries the comment that says why it keeps the exact match, and the
 pin freezes both sides of the bundle rule's `-c` cost. The third is left alone: the pin repeats
-`git branch -a` and `git log`, which costs a second of runtime and protects nothing less.
+`git branch -a` and `git log`, which costs microseconds and protects nothing more.
+
+A review of those commits at `dc00080` returned `PASS` and found one pre-existing hole of the same
+class, which needs its own ticket: `-p` is git's alias for the denied `--paginate` and is admitted,
+while adding `-p` to the shared set would refuse `git log -p` and `git diff -p`. The two prose
+defects it found here — stale `probe.py` line refs and a claimed second of runtime — are fixed in
+the commits after `dc00080`.
 
 **Acceptance**
 
