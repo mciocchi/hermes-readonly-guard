@@ -330,6 +330,19 @@ stay admitted. The scope is aliases, not spellings: `_denied_flag` cannot reach 
 the pager does once it starts — `less` runs shell commands from its own prompt — because the guard
 promises that the command spawns no second program, not that the first one is harmless.
 
+The review at `eb7d15d` returned `PASS` and found one high defect that predates this ticket and that
+no criterion names: the global loop skips the token after any value flag, and `_flag` strips
+`=value`, so `git --git-dir=.git --exec-path=/tmp version` is admitted and the denial never sees the
+second flag. Reproduced at `5225095`: `git --git-dir=.git -p version`, `--paginate version`,
+`--exec-path=/tmp version` and `--config-env=FOO=BAR version` all return `None`, while
+`git --git-dir=.git -c user.name=x version` is refused only because the config string is read as the
+sub-command. It needs its own ticket; this ticket's denial is correct for the token the loop reaches.
+
+Two lows are fixed after the reviewed sha, in `ac28283` and `5beea6f`: the refusal now names the
+pager as a third cause, since `-p` starts it and neither runs a command nor injects config, and the
+program-flag ticket's sentence is past tense without line references, because the lines it cited now
+contain the flags it said were missing.
+
 **Acceptance**
 
 A1. `git -p status --short` is refused, and the reason names `-p`.
