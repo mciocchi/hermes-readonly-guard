@@ -448,7 +448,7 @@ feature: F1
 priority: P1
 order: 7
 effort: 1
-status: review
+status: done
 depends_on: []
 files: [probe.py, tests/test_probe.py, CHANGES.md]
 gate: python -m unittest discover -s tests -t tests
@@ -483,3 +483,12 @@ A4. The full suite passes with no test that was green before turning red, and `P
 
 - `tests/test_probe.py::test_git_help_is_refused` fails first: `git help status` is admitted today.
 - `tests/test_probe.py::test_read_only_subcommands_are_allowed` is a pin for the git half of A3, green before the change.
+
+#### Review
+
+```review
+attempt: 1
+verdict: PASS
+sha: eec3a45
+note: gate (231 OK) and both mutations parent-run; the sweep found no second entry that starts a child unconditionally, and `git --git-dir=.git help status` still walks past it until the attached-value ticket lands
+```
