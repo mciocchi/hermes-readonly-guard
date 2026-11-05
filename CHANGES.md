@@ -16,6 +16,20 @@ that expands to a flag-named file, or through a configured textconv driver, is s
 both are recorded on their tickets. Each entry below carries its own reasoning and the designs that
 were rejected.
 
+## 2026-11-05 — T012: the probe refuses a denied flag after an attached value
+
+`_flag` strips `=value` before comparing, so `--git-dir=.git` still matched
+`GIT_GLOBAL_VALUE_FLAGS` and the global loop consumed two tokens for a flag that carried one: the
+next token was never compared. One attached value therefore hid every name in `GIT_GLOBAL_DENIED`
+and the pager alias — `git --git-dir=.git --exec-path=/tmp version`, `--config-env=FOO=BAR`,
+`--paginate` and `-p version` were all admitted — and chaining them walked past any number of
+denials.
+
+The advance now steps one token when the token itself carries `=`, two only when the value is a
+separate token. Rejected: dropping the value flags from `GIT_GLOBAL_VALUE_FLAGS`, which refuses
+`git -C /tmp log`, the most common probe there is; and teaching the loop git's grammar per option,
+which is the architecture's non-goal.
+
 ## 2026-11-05 — T013: the probe refuses `git help`
 
 `git help <command>` sat in the reader table with an empty denied set, so the guard admitted it and

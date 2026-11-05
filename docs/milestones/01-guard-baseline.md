@@ -374,7 +374,7 @@ feature: F1
 priority: P0
 order: 6
 effort: 2
-status: todo
+status: done
 depends_on: [T011]
 files: [probe.py, tests/test_probe.py, CHANGES.md]
 gate: python -m unittest discover -s tests -t tests
@@ -441,6 +441,15 @@ A5. The full suite passes with no test that was green before turning red, and `P
 - `tests/test_probe.py::test_a_denied_flag_after_an_attached_value_is_refused` fails first: the loop skips the token after an attached value, so every command in A1 is admitted today.
 - `tests/test_probe.py::test_value_flags_still_consume_a_separate_value` is a pin, green before the change.
 - `tests/test_probe.py::test_the_pager_alias_is_refused` keeps the unattached alias forms green.
+
+#### Review
+
+```review
+attempt: 1
+verdict: PASS
+sha: a33992e
+note: gate (232 OK) and both mutations parent-run at a33992e; medium finding is the CHANGES claim that every name in GIT_GLOBAL_DENIED was hidden, where the ticket's own Context says three of the four
+```
 
 ### T013: The probe refuses git help, which only starts a viewer
 
