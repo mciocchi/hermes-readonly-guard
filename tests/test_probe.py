@@ -271,6 +271,7 @@ class TestGit(ProbeTestCase):
             "git -p -C /tmp log",
         ):
             self.assertRefused(command, "git -p is not allowed")
+            self.assertRefused(command, "start the pager")
 
     def test_patch_flags_stay_read_only(self):
         """After a sub-command `-p` asks for a patch, and `-P` switches the pager off.

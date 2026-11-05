@@ -249,7 +249,8 @@ def _git_refusal(tokens: list[str]) -> str | None:
     while index < len(tokens) and tokens[index].startswith("-"):
         flag = _flag(tokens[index])
         if flag in GIT_GLOBAL_ONLY_DENIED or flag in GIT_GLOBAL_DENIED:
-            return f"git {flag} is not allowed — it can run a command or inject config"
+            return (f"git {flag} is not allowed — it can run a command, inject config "
+                    f"or start the pager")
         index += 2 if flag in GIT_GLOBAL_VALUE_FLAGS else 1
     if index >= len(tokens):
         return "git needs a sub-command"
