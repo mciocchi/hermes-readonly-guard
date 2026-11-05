@@ -234,7 +234,7 @@ feature: F1
 priority: P0
 order: 4
 effort: 1
-status: todo
+status: review
 depends_on: [T009]
 files: [probe.py, tests/test_probe.py]
 gate: python -m unittest discover -s tests -t tests
