@@ -234,7 +234,7 @@ feature: F1
 priority: P0
 order: 4
 effort: 1
-status: review
+status: done
 depends_on: [T009]
 files: [probe.py, tests/test_probe.py]
 gate: python -m unittest discover -s tests -t tests
@@ -271,3 +271,12 @@ A4. The full suite passes with no test that was green before turning red, and `P
 
 - `tests/test_probe.py::test_a_git_pager_flag_is_refused_in_a_bundle` fails first: `git grep -nOcat` is admitted today.
 - `tests/test_probe.py::test_git_grep_and_log_still_read` is a pin, green before the change.
+
+#### Review
+
+```review
+attempt: 1
+verdict: PASS
+sha: 2d22180
+note: gate (228 OK) and both mutations parent-run at 2d22180; reviewer session read-only under the guard it reviewed, so the suite was not re-run here
+```
