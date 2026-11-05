@@ -1,5 +1,21 @@
 # Changes
 
+## 2026-11-05 — 3.8: the probe refuses five more ways to start a program
+
+Five defects filed against 3.7, each a spelling the probe had already denied in its long form, or an
+entry whose only job is to start a child: T008 refuses every `$` expansion rather than only `$(…)`
+inside double quotes; T009 denies `sort --compress-program` and `rg --hostname-bin` in the four
+spellings a flag has — exact, GNU-prefixed, bundled and attached — through one matcher,
+`_denied_flag`; T010 catches `git grep -O` inside a bundle; T011 refuses `git -p`, the alias of the
+denied `--paginate`, before a sub-command; T013 drops `git help`, which only starts `man`. T007 is the
+one change outside that class: the dashboard reports the configured default instead of a hardcoded
+mode.
+
+The rule is bounded by the names in the tables, not by the shell. A program reached through a glob
+that expands to a flag-named file, or through a configured textconv driver, is still admitted, and
+both are recorded on their tickets. Each entry below carries its own reasoning and the designs that
+were rejected.
+
 ## 2026-11-05 — T013: the probe refuses `git help`
 
 `git help <command>` sat in the reader table with an empty denied set, so the guard admitted it and
