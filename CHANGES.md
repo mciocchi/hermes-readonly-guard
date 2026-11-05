@@ -1,5 +1,17 @@
 # Changes
 
+## 2026-11-05 — T011: the probe refuses the pager alias before a git sub-command
+
+`git -p` is git's documented alias for `--paginate`, so it starts the pager the deny list already
+refuses: under a tty `GIT_PAGER=<prog> git -p status` runs `<prog>`. The global loop matched the
+long name exactly and admitted the alias.
+
+The fix is a second set, `GIT_GLOBAL_ONLY_DENIED`, read only by the global loop. `-p` cannot join
+`GIT_GLOBAL_DENIED` because the sub-command loop reads that one too, and after a sub-command `-p`
+asks for a patch, so `git log -p` and `git diff -p` would be refused. Rejected: an alias map
+`{"-p": "--paginate"}` (the message would name a flag the user never typed), and teaching
+`_denied_flag` about aliases (aliases are per-position; `-p` after `log` means patch).
+
 ## 2026-11-05 — T010: the probe refuses a git pager flag in a bundle
 
 `git grep -O<prog>` runs that program on every match, and the loop refused its exact and `=value`

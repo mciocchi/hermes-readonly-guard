@@ -259,6 +259,33 @@ class TestGit(ProbeTestCase):
         ):
             self.assertRefused(command, "not read-only")
 
+    def test_the_pager_alias_is_refused(self):
+        """`-p` is git's alias for `--paginate`, which was already denied.
+
+        git reads it only before the sub-command, and the pager it starts is a second program,
+        which is what the denial is for.
+        """
+        for command in (
+            "git -p status --short",
+            "git -p log --oneline -3",
+            "git -p -C /tmp log",
+        ):
+            self.assertRefused(command, "git -p is not allowed")
+
+    def test_patch_flags_stay_read_only(self):
+        """After a sub-command `-p` asks for a patch, and `-P` switches the pager off.
+
+        The same two letters in the other position run nothing, so the alias denial must not
+        reach them.
+        """
+        for command in (
+            "git diff -p HEAD~1",
+            "git show -p HEAD",
+            "git -P status --short",
+            "git --no-pager log --oneline -1",
+        ):
+            self.assertAllowed(command)
+
     def test_git_grep_and_log_still_read(self):
         for command in (
             "git grep -n -e probe_refusal probe.py",

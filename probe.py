@@ -115,6 +115,11 @@ GIT_GLOBAL_DENIED: frozenset[str] = frozenset(
     {"-c", "--config-env", "--exec-path", "--paginate"}
 )
 
+#: Refused only before the sub-command. `-p` is git's alias for `--paginate` and starts the pager
+#: it denies, but after a sub-command `-p` asks for a patch. It cannot join `GIT_GLOBAL_DENIED`:
+#: the sub-command loop reads that set too, and would refuse `git log -p`.
+GIT_GLOBAL_ONLY_DENIED: frozenset[str] = frozenset({"-p"})
+
 #: Every program a probe may run — derived from the tables, never re-listed, so a
 #: program added above cannot go missing from the message the user reads.
 PROBE_PROGRAMS: frozenset[str] = frozenset(READERS) | {"find", "git"}
@@ -237,12 +242,13 @@ def _git_refusal(tokens: list[str]) -> str | None:
     """Refuse anything but a read-only `git` sub-command (and its read-only flags)."""
     # Exact match on purpose: git parses global options before the sub-command and rejects
     # abbreviations, bundles and attached short values (`git --pagi version` exits 129), so
-    # _denied_flag adds nothing for the names in this set. A spelling or alias git does accept
-    # belongs here, with a test.
+    # _denied_flag adds nothing for the names in these sets. A spelling or alias git does accept
+    # belongs here, with a test — in GIT_GLOBAL_ONLY_DENIED when the sub-command reads the same
+    # flag differently.
     index = 0
     while index < len(tokens) and tokens[index].startswith("-"):
         flag = _flag(tokens[index])
-        if flag in GIT_GLOBAL_DENIED:
+        if flag in GIT_GLOBAL_ONLY_DENIED or flag in GIT_GLOBAL_DENIED:
             return f"git {flag} is not allowed — it can run a command or inject config"
         index += 2 if flag in GIT_GLOBAL_VALUE_FLAGS else 1
     if index >= len(tokens):
