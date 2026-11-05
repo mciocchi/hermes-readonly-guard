@@ -235,6 +235,9 @@ def _refuse_unknown_flags(tokens: list[str], allowed: frozenset[str], name: str)
 
 def _git_refusal(tokens: list[str]) -> str | None:
     """Refuse anything but a read-only `git` sub-command (and its read-only flags)."""
+    # Exact match on purpose: git parses global options before the sub-command and rejects
+    # abbreviations, bundles and attached short values (`git --pagi version` exits 129), so
+    # _denied_flag would add nothing here. A spelling git does accept belongs here, with a test.
     index = 0
     while index < len(tokens) and tokens[index].startswith("-"):
         flag = _flag(tokens[index])
