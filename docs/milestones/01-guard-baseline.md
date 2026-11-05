@@ -439,3 +439,47 @@ A5. The full suite passes with no test that was green before turning red, and `P
 - `tests/test_probe.py::test_a_denied_flag_after_an_attached_value_is_refused` fails first: the loop skips the token after an attached value, so every command in A1 is admitted today.
 - `tests/test_probe.py::test_value_flags_still_consume_a_separate_value` is a pin, green before the change.
 - `tests/test_probe.py::test_the_pager_alias_is_refused` keeps the unattached alias forms green.
+
+### T013: The probe refuses git help, which only starts a viewer
+
+```ticket
+id: T013
+feature: F1
+priority: P1
+order: 7
+effort: 1
+status: todo
+depends_on: []
+files: [probe.py, tests/test_probe.py, CHANGES.md]
+gate: python -m unittest discover -s tests -t tests
+```
+
+**Context.** Architecture 2 §2 (Probe filter) and §4 invariant I1. `GIT_READERS` carries
+`"help": frozenset()`, so `git help <command>` is an admitted probe whose only purpose is to start
+a viewer. Measured in a read-only session of this plugin: `probe_refusal({"command": "git help
+status"})` returned `None`, the command then executed `/usr/bin/man`, and the man page for
+`git-status` was printed. Under a tty `man` pages through `less`, which can run shell commands from
+its own prompt. The table's rule is that starting a program is a denial — `-O` and `--paginate` are
+refused for exactly that — so an entry that always starts one does not belong in it.
+
+The ruling at architecture v2: `git help <command>` is documentation, not repo inspection, so the
+entry goes. Rejected: keeping the entry and tiering it like `git branch -a`, admitting only `-a`,
+`-g` or `-c` as the first argument — it keeps a probe nobody uses and adds a fourth matching rule
+to the file. Rejected too: adding a denied flag to help's empty set, which cannot help, because the
+program here is the sub-command itself rather than a flag.
+
+Out of scope: the auto-pager on `git log` and `git diff` under a tty. Nothing pages in the guard's
+own execution context, and the pager-alias ticket records that measurement; reaching for it here
+reopens that ticket, not this one.
+
+**Acceptance**
+
+A1. `git help status` is refused, and the reason says it is not a read-only sub-command.
+A2. `git help -a` and `git help -g` are refused the same way.
+A3. `git version`, `git status --short`, `git log -1` and `git grep -n def` keep their current verdicts.
+A4. The full suite passes with no test that was green before turning red, and `PROBE_PROGRAMS` is unchanged at 29 names.
+
+**Test plan**
+
+- `tests/test_probe.py::test_git_help_is_refused` fails first: `git help status` is admitted today.
+- `tests/test_probe.py::test_read_only_subcommands_are_allowed` is a pin for the git half of A3, green before the change.
