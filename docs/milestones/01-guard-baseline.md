@@ -365,3 +365,56 @@ verdict: PASS
 sha: eb7d15d
 note: gate (230 OK at 16d1a5f) and scoped suite (39 OK at 68b15fa) parent-run, both mutations noticed; finding 1 (high, pre-existing) is a live bypass of every global denial through an attached-value prefix, outside A1-A5
 ```
+
+### T012: The probe refuses a denied flag that follows an attached value
+
+```ticket
+id: T012
+feature: F1
+priority: P0
+order: 6
+effort: 2
+status: todo
+depends_on: [T011]
+files: [probe.py, tests/test_probe.py, CHANGES.md]
+gate: python -m unittest discover -s tests -t tests
+```
+
+**Context.** Architecture 2 §2 (Probe filter) and §4 invariant I1. The review of the pager-alias
+ticket at `eb7d15d` found this while reading the global loop: `_flag()` strips a `=value` before
+comparing, so an attached value still matches `GIT_GLOBAL_VALUE_FLAGS`, and the loop advances two
+tokens for a flag that carried only one. The token after it is never compared.
+
+Reproduced at `5225095` through `probe_refusal`, each of these returning `None`:
+
+    git --git-dir=.git --exec-path=/tmp version
+    git --git-dir=.git --config-env=FOO=BAR version
+    git --git-dir=.git --paginate version
+    git --git-dir=.git -p version
+
+`git --git-dir=.git -c user.name=x version` is refused, but for the wrong reason: the config string
+is read as the sub-command. So three of the four names in `GIT_GLOBAL_DENIED` and the one alias in
+`GIT_GLOBAL_ONLY_DENIED` are one attached value away from being bypassed.
+
+The repair is the advance, not the table: step one token when the token itself carries `=`, and two
+only when the value is a separate token. The obvious alternative — dropping `--git-dir` and friends
+from `GIT_GLOBAL_VALUE_FLAGS` — refuses `git --git-dir /tmp/x log`, and `git -C /tmp log` is the
+most common probe there is. One site changes: the global loop. The sub-command loop and
+`_refuse_unknown_flags` compare every token and skip none, so neither has this shape.
+
+Scope: the attached-value spelling of a value flag, and nothing else. The alias and the bundle work
+are done; `-p` appears here only because the skip also hides it.
+
+**Acceptance**
+
+A1. `git --git-dir=.git --exec-path=/tmp version`, `git --git-dir=.git --config-env=FOO=BAR version` and `git --git-dir=.git --paginate version` are refused as not allowed.
+A2. `git -C /tmp -p log` and `git --git-dir=.git -p log` are refused, and the reason names `-p`.
+A3. `git --git-dir=.git log`, `git --git-dir /tmp/x log`, `git -C /tmp log` and `git -C /tmp log --oneline -3` stay admitted.
+A4. `git --git-dir=.git -c user.name=x version` is refused, and the reason names `-c`.
+A5. The full suite passes with no test that was green before turning red, and `PROBE_PROGRAMS` is unchanged at 29 names.
+
+**Test plan**
+
+- `tests/test_probe.py::test_a_denied_flag_after_an_attached_value_is_refused` fails first: all four are admitted today.
+- `tests/test_probe.py::test_value_flags_still_consume_a_separate_value` is a pin, green before the change.
+- `tests/test_probe.py::test_the_pager_alias_is_refused` keeps the unattached alias forms green.
