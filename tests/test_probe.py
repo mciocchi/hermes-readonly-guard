@@ -297,6 +297,18 @@ class TestGit(ProbeTestCase):
             self.assertAllowed(command)
         self.assertRefused("git grep -ic pattern", "git grep -c")   # the bundle rule's one cost
 
+    def test_git_help_is_refused(self):
+        """`git help <command>` exists to start a viewer: `man`, and `less` under a tty.
+
+        The table denies `-O` and `--paginate` because a pager is a program, so an entry whose
+        only job is to start one has no place in it. The neighbours stay admitted, `version`
+        included, which no other test pins.
+        """
+        for command in ("git help status", "git help -a", "git help -g"):
+            self.assertRefused(command, "not a read-only sub-command")
+        for command in ("git version", "git status --short", "git log -1", "git grep -n def"):
+            self.assertAllowed(command)
+
     def test_a_global_flag_with_a_value_does_not_hide_the_subcommand(self):
         """`git -C <dir> log` is how a probe reaches a repo from another directory.
 

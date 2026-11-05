@@ -1,5 +1,17 @@
 # Changes
 
+## 2026-11-05 — T013: the probe refuses `git help`
+
+`git help <command>` sat in the reader table with an empty denied set, so the guard admitted it and
+git ran `man`: measured in a read-only session, where the man page for `git-status` was printed, and
+under a tty `man` pages through `less`, which runs shell commands from its own prompt. The table's
+rule is that a pager is a program — `-O` and `--paginate` are denied for it — so an entry whose only
+job is to start one does not belong in it.
+
+Rejected: admitting only `-a`, `-g` and `-c` through the listing tier, which keeps a probe nobody
+uses and adds a fourth matching rule; and adding a denied flag to help's empty set, which cannot
+work, because the program is the sub-command rather than a flag.
+
 ## 2026-11-05 — T011: the probe refuses the pager alias before a git sub-command
 
 `git -p` is git's documented alias for `--paginate`, so it starts the pager the deny list already

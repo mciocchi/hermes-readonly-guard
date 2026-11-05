@@ -85,7 +85,6 @@ GIT_READERS: dict[str, frozenset[str]] = {
     "show-ref": frozenset(),
     "whatchanged": frozenset({"--output", "--ext-diff", "--textconv"}),
     "version": frozenset(),
-    "help": frozenset(),
 }
 
 #: Sub-commands that are safe *only* as a listing: the first word after the
