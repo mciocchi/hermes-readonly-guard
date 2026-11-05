@@ -310,6 +310,29 @@ class TestGit(ProbeTestCase):
         for command in ("git version", "git status --short", "git log -1", "git grep -n def"):
             self.assertAllowed(command)
 
+    def test_a_denied_flag_after_an_attached_value_is_refused(self):
+        """`--git-dir=.git` carries its value, so the loop must not step over the next token.
+
+        The advance is what is wrong: `_flag` strips `=value`, the token still matches
+        GIT_GLOBAL_VALUE_FLAGS, and two tokens are consumed for a flag that had one.
+        """
+        for command in (
+            "git --git-dir=.git --exec-path=/tmp version",
+            "git --git-dir=.git --config-env=FOO=BAR version",
+            "git --git-dir=.git --paginate version",
+            "git --work-tree=. --exec-path=/tmp version",
+            "git --namespace=x --paginate version",
+            "git --super-prefix=x -p version",
+            "git -C /tmp --git-dir=.git --exec-path=/tmp version",
+        ):
+            self.assertRefused(command, "is not allowed")
+        for command in ("git -C /tmp -p log", "git --git-dir=.git -p log",
+                        "git --work-tree=. -p version"):
+            self.assertRefused(command, "git -p is not allowed")
+        self.assertRefused("git --git-dir=.git -c user.name=x version", "git -c is not allowed")
+        # The same skip re-admitted the command the git-help ticket closed.
+        self.assertRefused("git --git-dir=.git help status", "not a read-only sub-command")
+
     def test_a_global_flag_with_a_value_does_not_hide_the_subcommand(self):
         """`git -C <dir> log` is how a probe reaches a repo from another directory.
 
@@ -317,7 +340,8 @@ class TestGit(ProbeTestCase):
         the most common probe there is.
         """
         for command in ("git -C /tmp log", "git -C /tmp log --oneline -3",
-                        "git --git-dir /tmp/x log", "git --work-tree /tmp log"):
+                        "git --git-dir /tmp/x log", "git --work-tree /tmp log",
+                        "git --namespace /tmp log", "git --super-prefix /tmp log"):
             self.assertAllowed(command)
         self.assertRefused("git -C", "sub-command")
 
