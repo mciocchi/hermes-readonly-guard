@@ -183,10 +183,10 @@ gate: python -m unittest discover -s tests -t tests
 ```
 
 **Context.** Architecture 2 §2 (Probe filter) and §4 invariant I1. The catalog review of 3.7
-(`a8c518b1`) filed this as its second finding and the only part of it still open: `sort` denies
-`-o` and `--output` (`probe.py:50`) but not `--compress-program`, which runs a program; `rg` denies
-`--pre`, `--pre-glob`, `-z` and `--search-zip` (`probe.py:55`) but not `--hostname-bin`. Both are
-exact matches on the flag part (`_flag`), and two spellings defeat an exact match:
+(`a8c518b1`) filed this as its second finding and the only part of it still open: `sort` denied
+`-o` and `--output` but not `--compress-program`, which runs a program; `rg` denied `--pre`,
+`--pre-glob`, `-z` and `--search-zip` but not `--hostname-bin`. Both were exact matches on the flag
+part, and two spellings defeat an exact match:
 GNU takes any unambiguous prefix of a long option (`sort --compress-prog=/bin/sh`), and short
 options bundle or take an attached value (`sort -uo out`, `sort -oout.txt`).
 
