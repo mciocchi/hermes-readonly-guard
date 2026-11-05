@@ -246,9 +246,14 @@ loop, but `_git_refusal`'s sub-command loop (`probe.py:258-260`) still compares 
 `in`. `git grep` denies `-O` and `--open-files-in-pager` (`probe.py:78`) because `-O<path>` runs
 that program on the matched file, and the attached form defeats the exact match:
 `git grep -nOcat -e "def _denied_flag" probe.py` is admitted and runs `cat`, and
-`git grep -nO/bin/sh -e x probe.py` would hand the matched file to a shell. The prefix form does
-not apply to this table, because git rejects abbreviated long options, so the bundle and the
-already-refused exact and `=value` forms are the whole spelling set here.
+`git grep -nO/bin/sh -e x probe.py` would hand the matched file to a shell. The matcher's prefix
+branch comes along with `_denied_flag` and costs nothing on this table: every abbreviation it would
+catch is one git itself rejects. The live spelling set is the bundle, plus the exact and `=value`
+forms the loop already refused.
+
+The bundle rule has one cost: `git grep -ic pattern` is now refused, because the token carries the
+`-c` that the loop already refused when it stood alone. `git grep -c` was never admitted, so this
+removes an inconsistency rather than a capability; `git grep -i -n pattern` is unchanged.
 
 Scope: only the sub-command loop changes. The global loop at `probe.py:239-243` keeps its exact
 match because git parses global options before the sub-command and accepts no bundle spelling
