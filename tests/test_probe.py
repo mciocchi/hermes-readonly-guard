@@ -242,7 +242,8 @@ class TestPrograms(ProbeTestCase):
 
 class TestGit(ProbeTestCase):
     def test_read_only_subcommands_are_allowed(self):
-        for command in ("git log", "git diff", "git show", "git status", "git grep x"):
+        for command in ("git log", "git diff", "git show", "git status", "git grep x",
+                        "git version"):
             self.assertAllowed(command)
 
     def test_a_git_pager_flag_is_refused_in_a_bundle(self):
