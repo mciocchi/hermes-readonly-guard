@@ -402,19 +402,40 @@ from `GIT_GLOBAL_VALUE_FLAGS` — refuses `git --git-dir /tmp/x log`, and `git -
 most common probe there is. One site changes: the global loop. The sub-command loop and
 `_refuse_unknown_flags` compare every token and skip none, so neither has this shape.
 
+The sweep this ticket was widened by: the skip belongs to every value flag, not to `--git-dir`
+alone. Measured at `5225095`, each of these returns `None` as well:
+
+    git --work-tree=. --exec-path=/tmp version
+    git --namespace=x --paginate version
+    git --super-prefix=x -p version
+    git -C /tmp --git-dir=.git --exec-path=/tmp version
+
+The last one shows the skip compounding: each attached value steps over the token after it, so a
+chain of them walks past any number of denied globals. `-C` is not in A1's list because it has no
+attached form git accepts: `git -C/tmp log` exits 129 with "unknown option".
+
 Scope: the attached-value spelling of a value flag, and nothing else. The alias and the bundle work
-are done; `-p` appears here only because the skip also hides it.
+are done; `-p` appears here only because the skip also hides it. Checked and left alone, so the next
+reader does not re-open them:
+
+- `git --git-dir=.git -cuser.name=x version` is admitted, because `_flag` yields `-cuser.name`,
+  which is neither `-c` nor a value flag. git rejects that spelling itself (exit 129, "unknown
+  option"), so no program runs; refusing it would be a rule about a spelling git never executes.
+- `git --git-dir=.git --version` is refused as a missing sub-command. That is a false refusal, not a
+  bypass, and the same refusal fires on `git --version` alone.
+- `git help <command>` is admitted and starts `man` or a viewer. That is a table defect of the
+  `--paginate` kind, not the scanner's, and it needs its own ticket.
 
 **Acceptance**
 
-A1. `git --git-dir=.git --exec-path=/tmp version`, `git --git-dir=.git --config-env=FOO=BAR version` and `git --git-dir=.git --paginate version` are refused as not allowed.
-A2. `git -C /tmp -p log` and `git --git-dir=.git -p log` are refused, and the reason names `-p`.
-A3. `git --git-dir=.git log`, `git --git-dir /tmp/x log`, `git -C /tmp log` and `git -C /tmp log --oneline -3` stay admitted.
+A1. For each of `--git-dir`, `--work-tree`, `--namespace` and `--super-prefix`, a denied global placed after that flag in its attached form is refused as not allowed, and the two-flag chain `git -C /tmp --git-dir=.git --exec-path=/tmp version` is refused too.
+A2. `git -C /tmp -p log`, `git --git-dir=.git -p log` and `git --work-tree=. -p version` are refused, and the reason names `-p`.
+A3. `git --git-dir=.git log`, `git --git-dir /tmp/x log`, `git --work-tree /tmp log`, `git -C /tmp log` and `git -C /tmp log --oneline -3` stay admitted.
 A4. `git --git-dir=.git -c user.name=x version` is refused, and the reason names `-c`.
 A5. The full suite passes with no test that was green before turning red, and `PROBE_PROGRAMS` is unchanged at 29 names.
 
 **Test plan**
 
-- `tests/test_probe.py::test_a_denied_flag_after_an_attached_value_is_refused` fails first: all four are admitted today.
+- `tests/test_probe.py::test_a_denied_flag_after_an_attached_value_is_refused` fails first: the loop skips the token after an attached value, so every command in A1 is admitted today.
 - `tests/test_probe.py::test_value_flags_still_consume_a_separate_value` is a pin, green before the change.
 - `tests/test_probe.py::test_the_pager_alias_is_refused` keeps the unattached alias forms green.
