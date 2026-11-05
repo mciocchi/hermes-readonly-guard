@@ -300,7 +300,7 @@ feature: F1
 priority: P0
 order: 5
 effort: 2
-status: review
+status: done
 depends_on: [T010]
 files: [probe.py, tests/test_probe.py, CHANGES.md]
 gate: python -m unittest discover -s tests -t tests
@@ -343,3 +343,12 @@ A5. The full suite passes with no test that was green before turning red, and `P
 - `tests/test_probe.py::test_the_pager_alias_is_refused` fails first: `git -p status --short` is admitted today.
 - `tests/test_probe.py::test_patch_flags_stay_read_only` is a pin, green before the change.
 - `tests/test_probe.py::test_git_grep_and_log_still_read` already pins the `-ic` half of A4.
+
+#### Review
+
+```review
+attempt: 1
+verdict: PASS
+sha: eb7d15d
+note: gate (230 OK at 16d1a5f) and scoped suite (39 OK at 68b15fa) parent-run, both mutations noticed; finding 1 (high, pre-existing) is a live bypass of every global denial through an attached-value prefix, outside A1-A5
+```
