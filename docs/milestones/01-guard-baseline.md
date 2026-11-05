@@ -106,8 +106,8 @@ gate: python -m unittest discover -s tests -t tests
 ```
 
 **Context.** Architecture 2 §2 (Probe filter) and §4 invariant I1, against the claim README line
-178 already makes. The catalog review of 3.7 (`a8c518b1`) found that the token loop at
-`probe.py:149-153` refuses operator-only tokens and backticks, but `shlex` with `posix=True` strips
+178 already makes. The catalog review of 3.7 (`a8c518b1`) found that the token loop in
+`probe_refusal` refuses operator-only tokens and backticks, but `shlex` with `posix=True` strips
 quoting before the loop sees a token: `cat "$(cmd)"` arrives as the single token `$(cmd)`. It is
 not all operator characters (`_OPERATOR_CHARS` is `();<>|&`, so `$` is not one) and carries no
 backtick, so it is admitted, and `/bin/sh` then runs `cmd`. `${…}` is the same hole with no
@@ -186,7 +186,7 @@ gate: python -m unittest discover -s tests -t tests
 (`a8c518b1`) filed this as its second finding and the only part of it still open: `sort` denies
 `-o` and `--output` (`probe.py:50`) but not `--compress-program`, which runs a program; `rg` denies
 `--pre`, `--pre-glob`, `-z` and `--search-zip` (`probe.py:55`) but not `--hostname-bin`. Both are
-exact matches on the flag part (`_flag`, `probe.py:158`), and two spellings defeat an exact match:
+exact matches on the flag part (`_flag`), and two spellings defeat an exact match:
 GNU takes any unambiguous prefix of a long option (`sort --compress-prog=/bin/sh`), and short
 options bundle or take an attached value (`sort -uo out`, `sort -oout.txt`).
 
@@ -242,7 +242,7 @@ gate: python -m unittest discover -s tests -t tests
 
 **Context.** Architecture 2 §2 (Probe filter) and §4 invariant I1. The review of the program-flag
 ticket found this while grading `8d7c6e7`: the matcher that ticket added is wired into the reader
-loop, but `_git_refusal`'s sub-command loop (`probe.py:262-266`) still compares the flag part with
+loop, but `_git_refusal`'s sub-command loop still compares the flag part with
 `in`. `git grep` denies `-O` and `--open-files-in-pager` (`probe.py:78`) because `-O<path>` runs
 that program on the matched file, and the attached form defeats the exact match:
 `git grep -nOcat -e "def _denied_flag" probe.py` is admitted and runs `cat`, and
@@ -255,7 +255,7 @@ The bundle rule has one cost: `git grep -ic pattern` is now refused, because the
 `-c` that the loop already refused when it stood alone. `git grep -c` was never admitted, so this
 removes an inconsistency rather than a capability; `git grep -i -n pattern` is unchanged.
 
-Scope: only the sub-command loop changes. The global loop at `probe.py:243-247` keeps its exact
+Scope: only the sub-command loop changes. The global loop in `_git_refusal` keeps its exact
 match because git parses global options before the sub-command and accepts no bundle spelling
 there; if one exists it is its own ticket. The listing tier (`GIT_LISTINGS` through
 `_refuse_unknown_flags`) is a positive allowlist and stays exact, the way `find` does.
@@ -308,15 +308,15 @@ gate: python -m unittest discover -s tests -t tests
 
 **Context.** Architecture 2 §2 (Probe filter) and §4 invariant I1. The review of the polish commits
 at `dc00080` found this while listing the global loop's hand-written match: `-p` is git's
-documented alias for `--paginate`, and `GIT_GLOBAL_DENIED` (`probe.py:114-116`) denies the long name
+documented alias for `--paginate`, and `GIT_GLOBAL_DENIED` denies the long name
 alone. Measured on this host: `probe_refusal({"command": "git -p status --short"})` returns `None`
 while `git --paginate status --short` is refused, and under a tty
 `GIT_PAGER="touch <file>" git -p status` creates the file and exits 0, so the alias does run the
 configured program.
 
-The fix is not a line in `GIT_GLOBAL_DENIED`. Both loops consult that set — the global one at
-`probe.py:244`, the sub-command one through `for denied_set in (denied, GIT_GLOBAL_DENIED)` at
-`probe.py:263` — so `-p` in it also refuses `git log -p` and `git diff -p`, where `-p` means patch
+The fix is not a line in `GIT_GLOBAL_DENIED`. Both loops consult that set — the global one, and the
+sub-command one through `for denied_set in (denied, GIT_GLOBAL_DENIED)` — so `-p` in it also
+refuses `git log -p` and `git diff -p`, where `-p` means patch
 and is read-only. Measured by adding `-p` to the set at run time: `git log -p -- probe.py` then
 answers "git log -p is not read-only", and that command is the pager ticket's A3. The alias needs a
 set only the global loop consults, or an alias map applied there alone; either shape is acceptable,
