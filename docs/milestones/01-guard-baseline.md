@@ -176,7 +176,7 @@ feature: F1
 priority: P0
 order: 3
 effort: 2
-status: review
+status: done
 depends_on: [T008]
 files: [probe.py, tests/test_probe.py]
 gate: python -m unittest discover -s tests -t tests
@@ -216,3 +216,12 @@ A5. The full suite passes with no test that was green before turning red, and `P
 - `tests/test_probe.py::test_a_program_running_rg_flag_is_refused_in_every_spelling` fails first: `--hostname-bin` is admitted today.
 - `tests/test_probe.py::test_a_denied_short_flag_is_caught_in_a_bundle_or_an_attached_value` fails first: `sort -uo` and `sort -oout.txt` are admitted today.
 - `tests/test_probe.py::test_bundles_of_allowed_flags_still_pass` is a pin, green before the change.
+
+#### Review
+
+```review
+attempt: 1
+verdict: PASS
+sha: 8d7c6e7
+note: gate and mutations parent-run at 8d7c6e7 (226 OK / 35 OK); the review's medium finding is the git loop, which still exact-matches, so `git grep -nO<prog>` is admitted (pre-existing, outside A1-A5)
+```
