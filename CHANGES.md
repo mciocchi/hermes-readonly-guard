@@ -12,6 +12,12 @@ Rejected: admitting only `-a`, `-g` and `-c` through the listing tier, which kee
 uses and adds a fourth matching rule; and adding a denied flag to help's empty set, which cannot
 work, because the program is the sub-command rather than a flag.
 
+The sweep that justifies stopping here: of the 16 remaining readers and 8 listing sub-commands,
+none starts a child unconditionally. The nearest neighbours are the four readers that run a textconv
+driver when one is configured (`log`, `diff`, `show`, `whatchanged`) and the tty pager; both are
+conditional, which is the ruling that already keeps the auto-pager out of scope. `help` was the only
+entry whose only effect is a viewer.
+
 ## 2026-11-05 — T011: the probe refuses the pager alias before a git sub-command
 
 `git -p` is git's documented alias for `--paginate`, so it starts the pager the deny list already

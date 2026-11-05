@@ -412,7 +412,9 @@ alone. Measured at `5225095`, each of these returns `None` as well:
 
 The last one shows the skip compounding: each attached value steps over the token after it, so a
 chain of them walks past any number of denied globals. `-C` is not in A1's list because it has no
-attached form git accepts: `git -C/tmp log` exits 129 with "unknown option".
+attached form git accepts: `git -C/tmp log` exits 129 with "unknown option". It also re-admits a
+command another ticket closed: `git --git-dir=.git help status` returns `None`, so the git-help
+ticket's refusal holds only for the bare spelling.
 
 Scope: the attached-value spelling of a value flag, and nothing else. The alias and the bundle work
 are done; `-p` appears here only because the skip also hides it. Checked and left alone, so the next
@@ -471,6 +473,15 @@ program here is the sub-command itself rather than a flag.
 Out of scope: the auto-pager on `git log` and `git diff` under a tty. Nothing pages in the guard's
 own execution context, and the pager-alias ticket records that measurement; reaching for it here
 reopens that ticket, not this one.
+
+The review at `eec3a45` returned `PASS` and swept both tables: 16 readers and 8 listing
+sub-commands, none of which starts a child unconditionally. The four readers that run a textconv
+driver when one is configured, and the tty pager, are the nearest neighbours and both are
+conditional, which is why `help` was the only entry whose only effect is a viewer. Two lows are
+fixed after the reviewed sha: `git version` is pinned with the other read-only sub-commands
+(`978c2c3`), and the changelog carries the sweep. The bare spelling is what this ticket closes;
+`git --git-dir=.git help status` is still admitted through the attached-value skip, which is the
+attached-value ticket's to close.
 
 **Acceptance**
 
