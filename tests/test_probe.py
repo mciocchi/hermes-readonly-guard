@@ -262,10 +262,12 @@ class TestGit(ProbeTestCase):
     def test_git_grep_and_log_still_read(self):
         for command in (
             "git grep -n -e probe_refusal probe.py",
+            "git grep -in pattern",          # a bundle of allowed letters stays allowed
             "git log -p -- probe.py",
             "git branch -a",
         ):
             self.assertAllowed(command)
+        self.assertRefused("git grep -ic pattern", "git grep -c")   # the bundle rule's one cost
 
     def test_a_global_flag_with_a_value_does_not_hide_the_subcommand(self):
         """`git -C <dir> log` is how a probe reaches a repo from another directory.
