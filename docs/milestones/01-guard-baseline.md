@@ -167,3 +167,52 @@ verdict: PASS
 sha: 4ed4f4e
 note: gate and mutation probes parent-run at 4ed4f4e (222 tests, OK); the reviewer's session was read-only under the guard it reviewed
 ```
+
+### T009: The probe refuses a program-running flag in every spelling
+
+```ticket
+id: T009
+feature: F1
+priority: P0
+order: 3
+effort: 2
+status: todo
+depends_on: [T008]
+files: [probe.py, tests/test_probe.py]
+gate: python -m unittest discover -s tests -t tests
+```
+
+**Context.** Architecture 2 §2 (Probe filter) and §4 invariant I1. The catalog review of 3.7
+(`a8c518b1`) filed this as its second finding and the only part of it still open: `sort` denies
+`-o` and `--output` (`probe.py:50`) but not `--compress-program`, which runs a program; `rg` denies
+`--pre`, `--pre-glob`, `-z` and `--search-zip` (`probe.py:55`) but not `--hostname-bin`. Both are
+exact matches on the flag part (`_flag`, `probe.py:158`), and two spellings defeat an exact match:
+GNU takes any unambiguous prefix of a long option (`sort --compress-prog=/bin/sh`), and short
+options bundle or take an attached value (`sort -uo out`, `sort -oout.txt`).
+
+The command-substitution ticket closed the `$IFS` route into these flags, so what remains is the
+literal spellings. The reviewer's branch (`hermes-readonly-guard#2`) claims to carry both this and
+the substitution fix; only this half is still missing, so the implementer may verify that branch
+rather than invent the code, but the acceptance below is behaviour and holds either way.
+
+Fix the class, not the two entries: one matcher next to `_flag` that decides a token is denied by
+its flag part, by being a prefix of a denied long option, or by carrying a denied short flag in a
+bundle. `find`'s positive allowlist (`_refuse_unknown_flags`) is untouched: its primaries are
+neither abbreviatable nor bundlable, and `find . -name '*.md'` must stay allowed. Rejected:
+blocking `$IFS` by name (the substitution rule already covers it, and a name blocklist is a list of
+shell constants).
+
+**Acceptance**
+
+A1. `sort --compress-program=/bin/sh in.txt`, `sort --compress-prog=/bin/sh in.txt` and `sort --compress-program /bin/sh in.txt` are refused as not read-only.
+A2. `rg --hostname-bin=/bin/sh pattern .` and `rg --hostname-b=/bin/sh pattern .` are refused as not read-only.
+A3. A denied short flag is refused inside a bundle and as an attached value: `sort -uo out.txt in.txt`, `sort -oout.txt in.txt`, `tree -Bo out.txt`.
+A4. Bundles of allowed flags still pass: `sort -ru in.txt`, `ls -la`, `du -sh .`, `rg -n 'def guard' .`.
+A5. The full suite passes with no test that was green before turning red, and `PROBE_PROGRAMS` is unchanged at 29 names.
+
+**Test plan**
+
+- `tests/test_probe.py::test_a_program_running_sort_flag_is_refused_in_every_spelling` fails first: `--compress-program` is admitted today.
+- `tests/test_probe.py::test_a_program_running_rg_flag_is_refused_in_every_spelling` fails first: `--hostname-bin` is admitted today.
+- `tests/test_probe.py::test_a_denied_short_flag_is_caught_in_a_bundle_or_an_attached_value` fails first: `sort -uo` and `sort -oout.txt` are admitted today.
+- `tests/test_probe.py::test_bundles_of_allowed_flags_still_pass` is a pin, green before the change.
