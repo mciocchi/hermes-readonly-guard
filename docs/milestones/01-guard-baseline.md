@@ -291,3 +291,55 @@ verdict: PASS
 sha: 2d22180
 note: gate (228 OK) and both mutations parent-run at 2d22180; reviewer session read-only under the guard it reviewed, so the suite was not re-run here
 ```
+
+### T011: The probe refuses the pager alias before a git sub-command
+
+```ticket
+id: T011
+feature: F1
+priority: P0
+order: 5
+effort: 2
+status: todo
+depends_on: [T010]
+files: [probe.py, tests/test_probe.py, CHANGES.md]
+gate: python -m unittest discover -s tests -t tests
+```
+
+**Context.** Architecture 2 §2 (Probe filter) and §4 invariant I1. The review of the polish commits
+at `dc00080` found this while listing the global loop's hand-written match: `-p` is git's
+documented alias for `--paginate`, and `GIT_GLOBAL_DENIED` (`probe.py:114-116`) denies the long name
+alone. Measured on this host: `probe_refusal({"command": "git -p status --short"})` returns `None`
+while `git --paginate status --short` is refused, and under a tty
+`GIT_PAGER="touch <file>" git -p status` creates the file and exits 0, so the alias does run the
+configured program.
+
+The fix is not a line in `GIT_GLOBAL_DENIED`. Both loops consult that set — the global one at
+`probe.py:244`, the sub-command one through `for denied_set in (denied, GIT_GLOBAL_DENIED)` at
+`probe.py:263` — so `-p` in it also refuses `git log -p` and `git diff -p`, where `-p` means patch
+and is read-only. Measured by adding `-p` to the set at run time: `git log -p -- probe.py` then
+answers "git log -p is not read-only", and that command is the pager ticket's A3. The alias needs a
+set only the global loop consults, or an alias map applied there alone; either shape is acceptable,
+and the sub-command loop must not see `-p`.
+
+Two neighbours, so the next reader does not re-open them. `git -cuser.name=x status` is admitted
+because the exact match does not split an attached value, and git rejects that spelling itself
+(exit 129, "unknown option"), so no program runs. `git -P` and `--no-pager` are the safe twins and
+stay admitted. The scope is aliases, not spellings: `_denied_flag` cannot reach this one, because
+`-p` is not an abbreviation, a bundle or an attached value of `--paginate`. Out of scope is what
+the pager does once it starts — `less` runs shell commands from its own prompt — because the guard
+promises that the command spawns no second program, not that the first one is harmless.
+
+**Acceptance**
+
+A1. `git -p status --short` is refused, and the reason names `-p`.
+A2. `git -P status --short` and `git --no-pager log --oneline -1` stay admitted.
+A3. `git log -p -- probe.py` and `git diff -p HEAD~1` stay admitted.
+A4. `git --paginate status --short`, `git -c user.name=x status` and `git grep -ic pattern` stay refused.
+A5. The full suite passes with no test that was green before turning red, and `PROBE_PROGRAMS` is unchanged at 29 names.
+
+**Test plan**
+
+- `tests/test_probe.py::test_the_pager_alias_is_refused` fails first: `git -p status --short` is admitted today.
+- `tests/test_probe.py::test_patch_flags_stay_read_only` is a pin, green before the change.
+- `tests/test_probe.py::test_git_grep_and_log_still_read` already pins the `-ic` half of A4.
