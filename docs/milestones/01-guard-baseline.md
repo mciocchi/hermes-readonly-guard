@@ -260,6 +260,11 @@ match because git parses global options before the sub-command and accepts no bu
 there; if one exists it is its own ticket. The listing tier (`GIT_LISTINGS` through
 `_refuse_unknown_flags`) is a positive allowlist and stays exact, the way `find` does.
 
+The review left three low findings. Two are fixed after the reviewed sha `2d22180` (last of them
+`c1eb6aa`): the global loop now carries the comment that says why it keeps the exact match, and the
+pin freezes both sides of the bundle rule's `-c` cost. The third is left alone: the pin repeats
+`git branch -a` and `git log`, which costs a second of runtime and protects nothing less.
+
 **Acceptance**
 
 A1. `git grep -nOcat -e probe_refusal probe.py` and `git grep -nO/bin/sh -e x probe.py` are refused as not read-only.
