@@ -1,5 +1,21 @@
 # Changes
 
+## 2026-11-05 — T010: the probe refuses a git pager flag in a bundle
+
+`git grep -O<prog>` runs that program on every match, and the loop refused its exact and `=value`
+spellings while admitting the bundle: `git grep -nOcat` failed the exact match on `-nOcat`, ran
+`cat`, and `-O/bin/sh` would have handed the matched file to a shell. The loop now asks the same
+`_denied_flag` matcher the reader table uses, once with the sub-command's denied set and once with
+the global one, so every spelling the program-flag ticket closed for `sort` and `rg` is closed here
+too.
+
+Two tables still match exactly, on purpose: the global option loop, which runs before the
+sub-command, and the listing tier, which is a positive allowlist like `find`'s. The bundle rule
+costs `git grep -ic`, because the token now carries the `-c` that was refused on its own; `git grep
+-c` was already refused, so this removes an inconsistency. Rejected: adding `-O` to the grep entry
+alone (the next denied flag reopens the hole), and routing `git grep` through the reader loop (its
+sub-command semantics do not fit that table).
+
 ## 2026-11-04 — T009: the probe refuses a program-running flag in every spelling
 
 `sort --compress-program=PROG` and `rg --hostname-bin=CMD` both run a program, and neither was in

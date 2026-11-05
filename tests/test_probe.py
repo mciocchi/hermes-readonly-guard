@@ -245,6 +245,28 @@ class TestGit(ProbeTestCase):
         for command in ("git log", "git diff", "git show", "git status", "git grep x"):
             self.assertAllowed(command)
 
+    def test_a_git_pager_flag_is_refused_in_a_bundle(self):
+        """`-nOcat` is `-n -O cat`, and `-O` runs that program on every match.
+
+        The exact and `=value` spellings were refused; the bundle was not, so `cat` ran and
+        `-O/bin/sh` would hand the matched file to a shell.
+        """
+        for command in (
+            "git grep -nOcat -e probe_refusal probe.py",
+            "git grep -nO/bin/sh -e x probe.py",
+            "git grep -O -e probe_refusal probe.py",
+            "git grep --open-files-in-pager=cat -e x probe.py",
+        ):
+            self.assertRefused(command, "not read-only")
+
+    def test_git_grep_and_log_still_read(self):
+        for command in (
+            "git grep -n -e probe_refusal probe.py",
+            "git log -p -- probe.py",
+            "git branch -a",
+        ):
+            self.assertAllowed(command)
+
     def test_a_global_flag_with_a_value_does_not_hide_the_subcommand(self):
         """`git -C <dir> log` is how a probe reaches a repo from another directory.
 

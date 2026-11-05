@@ -256,6 +256,8 @@ def _git_refusal(tokens: list[str]) -> str | None:
     if denied is None:
         return f"git {sub} is not a read-only sub-command"
     for token in rest:
-        if token.startswith("-") and (_flag(token) in denied or _flag(token) in GIT_GLOBAL_DENIED):
-            return f"git {sub} {_flag(token)} is not read-only"
+        for denied_set in (denied, GIT_GLOBAL_DENIED):
+            hit = _denied_flag(token, denied_set)
+            if hit is not None:
+                return f"git {sub} {hit} is not read-only"
     return None
